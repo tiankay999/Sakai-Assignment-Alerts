@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import requests
@@ -31,8 +32,12 @@ SAKAI_BASE = "https://sakai.ug.edu.gh"
 LOGIN_URL = f"{SAKAI_BASE}/portal/xlogin"
 SITE_LIST_URL = f"{SAKAI_BASE}/portal/sites"
 
-# Local file that tracks which assignments/quizzes have already been seen
+# Local file that tracks which assignments/quizzes have already been seen.
+# Format: {"ids": [...], "items": [{id, title, course, due_date, type}, ...]}
 SEEN_FILE = Path("seen.json")
+
+# Tracks the date the morning reminder was last sent (contains "YYYY-MM-DD")
+REMINDER_FILE = Path("last_reminder_date.txt")
 
 # Delay between HTTP requests to avoid hammering the server
 REQUEST_DELAY = 1.0  # seconds
@@ -54,18 +59,28 @@ def validate_env() -> None:
         sys.exit(1)
 
 
-def load_seen() -> set:
-    """Load the set of already-seen item IDs from seen.json."""
-    if SEEN_FILE.exists():
-        with SEEN_FILE.open("r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
+def load_seen() -> tuple[set, list[dict]]:
+    """
+    Load seen item IDs and their full metadata from seen.json.
+    Returns (seen_ids: set[str], items: list[dict]).
+
+    Handles the old flat-list format transparently so existing seen.json files
+    are migrated without data loss (IDs preserved, metadata starts empty).
+    """
+    if not SEEN_FILE.exists():
+        return set(), []
+    with SEEN_FILE.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    # Old format was a plain list of ID strings
+    if isinstance(data, list):
+        return set(data), []
+    return set(data.get("ids", [])), data.get("items", [])
 
 
-def save_seen(seen: set) -> None:
-    """Persist the set of seen item IDs to seen.json."""
+def save_seen(seen_ids: set, items: list[dict]) -> None:
+    """Persist seen item IDs and full item metadata to seen.json."""
     with SEEN_FILE.open("w", encoding="utf-8") as f:
-        json.dump(sorted(seen), f, indent=2)
+        json.dump({"ids": sorted(seen_ids), "items": items}, f, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +197,58 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Scraping helpers
+# ---------------------------------------------------------------------------
+
+def _is_meaningful_title(text: str) -> bool:
+    """
+    Return True only if text looks like a real assignment/quiz name.
+    Rejects: empty strings, purely numeric strings (row IDs like "10", "56"),
+    single-character artifacts, and anything containing "@" (email addresses).
+    """
+    t = text.strip()
+    return bool(t) and not t.isdigit() and len(t) > 1 and "@" not in t
+
+
+def _extract_title_from_row(cells) -> str:
+    """
+    Walk every <td> in a row and return the text of the first <a> tag whose
+    text is a meaningful title.
+
+    Links are rejected when:
+      - href starts with "mailto:" (email links appear in instructor columns)
+      - href starts with "#" (in-page anchors used as row markers)
+      - the link text fails _is_meaningful_title (numeric IDs, emails, etc.)
+
+    Cells are visited left-to-right so the title column (typically the first
+    non-ID column) wins over later columns that may hold instructor emails or
+    action buttons.
+    """
+    for cell in cells:
+        for link in cell.find_all("a"):
+            href = link.get("href", "")
+            if href.startswith("mailto:") or href.startswith("#"):
+                continue
+            text = link.get_text(strip=True)
+            if _is_meaningful_title(text):
+                return text
+    return ""
+
+
+def _extract_due_date_from_row(cells) -> str:
+    """Return the first cell text that looks like a date, or empty string."""
+    month_abbrevs = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    for cell in cells:
+        text = cell.get_text(strip=True)
+        has_month = any(m in text for m in month_abbrevs)
+        has_separator = "/" in text or "-" in text
+        if (has_month or has_separator) and any(c.isdigit() for c in text):
+            return text
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Assignment scraping
 # ---------------------------------------------------------------------------
 
@@ -194,7 +261,6 @@ def scrape_assignments(session: requests.Session, site: dict) -> list[dict]:
     site_id = site["id"]
     course = site["title"]
 
-    # Sakai's Assignment tool URL for a site
     url = f"{SAKAI_BASE}/portal/site/{site_id}/tool-reset/sakai.assignment.grades"
     time.sleep(REQUEST_DELAY)
 
@@ -206,35 +272,22 @@ def scrape_assignments(session: requests.Session, site: dict) -> list[dict]:
     except requests.RequestException:
         return assignments
 
-    # Sakai assignment rows are typically in a table with class 'listHier'
-    # Each row contains the title and due date in labelled cells
-    for row in soup.select("table.listHier tr, table tr"):
+    # Prefer the 'listHier' table used by Sakai's assignment tool; fall back
+    # to any table on the page if that class is absent.
+    rows = soup.select("table.listHier tr") or soup.select("table tr")
+
+    for row in rows:
         cells = row.find_all("td")
         if not cells:
-            continue
+            continue  # skip header rows (<th> only)
 
-        # The assignment title is usually in the first or second cell as a link
-        title_cell = cells[0] if cells else None
-        title_link = title_cell.find("a") if title_cell else None
-        title = title_link.get_text(strip=True) if title_link else ""
-        if not title:
-            # Some themes put the title text directly in the first cell
-            title = title_cell.get_text(strip=True) if title_cell else ""
+        # Walk all cells to find the real title link, skipping numeric IDs
+        title = _extract_title_from_row(cells)
         if not title:
             continue
 
-        # Look for a due-date cell — Sakai often labels it or it's the 3rd/4th column
-        due_date = ""
-        for cell in cells[1:]:
-            text = cell.get_text(strip=True)
-            # Heuristic: due date cells contain month abbreviations or date separators
-            if any(m in text for m in ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-                                        "/", "-")) and any(c.isdigit() for c in text):
-                due_date = text
-                break
+        due_date = _extract_due_date_from_row(cells)
 
-        # Build a stable unique ID: site_id + normalised title
         item_id = f"assignment::{site_id}::{title.lower().replace(' ', '_')}"
         assignments.append({
             "id": item_id,
@@ -260,7 +313,6 @@ def scrape_quizzes(session: requests.Session, site: dict) -> list[dict]:
     site_id = site["id"]
     course = site["title"]
 
-    # Sakai's Samigo (Tests & Quizzes) tool URL
     url = f"{SAKAI_BASE}/portal/site/{site_id}/tool-reset/sakai.samigo"
     time.sleep(REQUEST_DELAY)
 
@@ -272,27 +324,16 @@ def scrape_quizzes(session: requests.Session, site: dict) -> list[dict]:
     except requests.RequestException:
         return quizzes
 
-    # Samigo renders published assessments in a table; each row has the quiz title
     for row in soup.select("table tr"):
         cells = row.find_all("td")
         if not cells:
             continue
 
-        title_cell = cells[0]
-        title_link = title_cell.find("a")
-        title = title_link.get_text(strip=True) if title_link else title_cell.get_text(strip=True)
+        title = _extract_title_from_row(cells)
         if not title:
             continue
 
-        # Look for a due/available-until date in the row
-        due_date = ""
-        for cell in cells[1:]:
-            text = cell.get_text(strip=True)
-            if any(m in text for m in ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-                                        "/", "-")) and any(c.isdigit() for c in text):
-                due_date = text
-                break
+        due_date = _extract_due_date_from_row(cells)
 
         item_id = f"quiz::{site_id}::{title.lower().replace(' ', '_')}"
         quizzes.append({
@@ -342,26 +383,141 @@ def send_telegram(items: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Morning reminder
+# ---------------------------------------------------------------------------
+
+# Sakai date formats to try in order, most specific first.
+_DATE_FORMATS = [
+    "%b %d, %Y %I:%M %p",   # Jan 15, 2026 11:59 PM
+    "%b %d, %Y %I:%M%p",    # Jan 15, 2026 11:59PM
+    "%B %d, %Y %I:%M %p",   # January 15, 2026 11:59 PM
+    "%b %d, %Y",             # Jan 15, 2026
+    "%B %d, %Y",             # January 15, 2026
+    "%A, %d %B %Y",          # Monday, 26 May 2026
+    "%d %B %Y %I:%M %p",     # 26 May 2026 11:59 PM
+    "%d %B %Y",              # 26 May 2026
+    "%d/%m/%Y",              # 26/05/2026
+    "%Y-%m-%d",              # 2026-05-26
+]
+
+
+def parse_due_date(due_date_str: str) -> date | None:
+    """
+    Try every known Sakai date format and return a date object, or None if
+    the string is empty or does not match any format.
+    """
+    if not due_date_str:
+        return None
+    cleaned = due_date_str.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _should_send_morning_reminder() -> bool:
+    """
+    Return True if the current time is in the 8:00–8:10 AM window and the
+    reminder has not already been sent today.
+    """
+    now = datetime.now()
+    if not (now.hour == 8 and now.minute < 10):
+        return False
+    today_str = now.strftime("%Y-%m-%d")
+    if REMINDER_FILE.exists() and REMINDER_FILE.read_text().strip() == today_str:
+        return False  # already sent this morning
+    return True
+
+
+def _mark_reminder_sent() -> None:
+    """Record today's date so we don't send the reminder a second time."""
+    REMINDER_FILE.write_text(datetime.now().strftime("%Y-%m-%d"), encoding="utf-8")
+
+
+def _build_morning_message(items: list[dict]) -> str:
+    """
+    Build the morning summary text from the stored item list.
+    Items whose due date has already passed are excluded.
+    Items with no parseable due date are included with 'Due: Unknown'.
+    """
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    pending = []
+    for item in items:
+        parsed = parse_due_date(item.get("due_date", ""))
+        # Keep items with no date (unknown) and items not yet past their due date
+        if parsed is None or parsed >= today:
+            pending.append((item, parsed))
+
+    if not pending:
+        return "✅ Good morning! No pending assignments or quizzes. Enjoy your day!"
+
+    lines = ["📅 Good morning! Here are your pending tasks:\n"]
+    for item, parsed in pending:
+        icon = "📝" if item.get("type") == "Assignment" else "🧪"
+        lines.append(f"{icon} {item['type']}: {item['title']}")
+        lines.append(f"   Course: {item['course']}")
+
+        if parsed is None:
+            due_label = "Unknown"
+        elif parsed == today:
+            due_label = "Today"
+        elif parsed == tomorrow:
+            due_label = "Tomorrow"
+        else:
+            due_label = parsed.strftime("%A, %d %b %Y")
+
+        lines.append(f"   Due: {due_label}")
+        lines.append("")  # blank line between items
+
+    return "\n".join(lines).rstrip()
+
+
+def send_morning_reminder(items: list[dict]) -> None:
+    """Send the morning summary Telegram message and record that it was sent."""
+    message = _build_morning_message(items)
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        resp = requests.post(
+            api_url,
+            data={"chat_id": TELEGRAM_CHAT_ID, "text": message},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            print("[+] Morning reminder sent.")
+            _mark_reminder_sent()
+        else:
+            print(f"[WARN] Morning reminder failed: {resp.status_code} {resp.text[:200]}")
+    except requests.RequestException as exc:
+        print(f"[ERROR] Could not send morning reminder: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 CHECK_INTERVAL = 600  # seconds between checks (10 minutes)
 
 
-def check_once(session: requests.Session, seen: set) -> set:
+def check_once(
+    session: requests.Session, seen: set, stored_items: list[dict]
+) -> tuple[set, list[dict]]:
     """
-    Run a single scrape cycle. Returns the updated seen set.
-    Re-raises nothing — errors are caught and logged so the loop keeps running.
+    Run a single scrape cycle.
+    Returns the updated (seen_ids, items) tuple.
+    Never raises — errors are caught and logged so the loop keeps running.
     """
-    # Re-login if the session has expired (Sakai sessions are typically 1 hour)
     if not sakai_login(session):
         print("[WARN] Login failed this cycle; will retry next interval.")
-        return seen
+        return seen, stored_items
 
     sites = get_enrolled_sites(session)
     if not sites:
         print("[WARN] No enrolled sites found this cycle.")
-        return seen
+        return seen, stored_items
 
     all_items: list[dict] = []
     for site in sites:
@@ -379,16 +535,23 @@ def check_once(session: requests.Session, seen: set) -> set:
     else:
         print("[*] No new assignments or quizzes.")
 
+    # Merge scraped items into the stored list so metadata (especially due
+    # dates) stays fresh. Use a dict keyed by ID for O(1) upserts.
+    items_by_id = {item["id"]: item for item in stored_items}
+    for item in all_items:
+        items_by_id[item["id"]] = item  # overwrite with latest metadata
+
+    updated_items = list(items_by_id.values())
     seen.update(item["id"] for item in all_items)
-    save_seen(seen)
+    save_seen(seen, updated_items)
     print(f"[*] seen.json updated ({len(seen)} total items tracked).")
-    return seen
+    return seen, updated_items
 
 
 def main() -> None:
     validate_env()
 
-    seen = load_seen()
+    seen, stored_items = load_seen()
     print(f"[*] Loaded {len(seen)} previously seen items from {SEEN_FILE}.")
 
     session = requests.Session()
@@ -403,11 +566,16 @@ def main() -> None:
     print(f"[*] Starting monitor — checking every {CHECK_INTERVAL // 60} minutes. Press Ctrl+C to stop.")
 
     while True:
-        print(f"\n[*] Running check at {time.strftime('%Y-%m-%d %H:%M:%S')} ...")
+        print(f"\n[*] Running check at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ...")
         try:
-            seen = check_once(session, seen)
+            # Morning reminder runs before the scrape so it uses stored data
+            # immediately at 8 AM without waiting for a full scrape cycle.
+            if _should_send_morning_reminder():
+                print("[*] 8 AM window detected — sending morning reminder ...")
+                send_morning_reminder(stored_items)
+
+            seen, stored_items = check_once(session, seen, stored_items)
         except Exception as exc:
-            # Catch unexpected errors so the loop never crashes permanently
             print(f"[ERROR] Unexpected error during check: {exc}")
 
         print(f"[*] Next check in {CHECK_INTERVAL // 60} minutes ...")
