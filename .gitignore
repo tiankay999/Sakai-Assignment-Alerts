@@ -1,5 +1,7 @@
 .env
 seen.json
+deployment_ts.txt
+last_reminder_date.txt
 __pycache__/
 *.pyc
 *.pyo
