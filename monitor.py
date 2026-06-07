@@ -536,11 +536,11 @@ def parse_due_date(due_date_str: str) -> date | None:
 
 def _should_send_morning_reminder() -> bool:
     """
-    Return True if the current time is in the 8:00–8:10 AM window and the
+    Return True if the current time is 8:00 AM or later and the
     reminder has not already been sent today.
     """
     now = datetime.now()
-    if not (now.hour == 8 and now.minute < 10):
+    if now.hour < 8:
         return False
     today_str = now.strftime("%Y-%m-%d")
     if REMINDER_FILE.exists() and REMINDER_FILE.read_text().strip() == today_str:
