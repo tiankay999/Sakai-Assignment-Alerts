@@ -436,6 +436,56 @@ def scrape_announcements(session: requests.Session, site: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Resource scraping
+# ---------------------------------------------------------------------------
+
+def scrape_resources(session: requests.Session, site: dict) -> list[dict]:
+    """
+    Scrape the Resources tool for a single Sakai site.
+    Returns a list of dicts with keys: id, title, course, posted_date, type.
+    """
+    resources = []
+    site_id = site["id"]
+    course = site["title"]
+
+    url = f"{SAKAI_BASE}/portal/site/{site_id}/tool-reset/sakai.resources"
+    time.sleep(REQUEST_DELAY)
+
+    try:
+        resp = session.get(url, timeout=30)
+        if resp.status_code != 200:
+            return resources
+        soup = BeautifulSoup(resp.text, "html.parser")
+    except requests.RequestException:
+        return resources
+
+    # Resources are usually in a table with class 'listHier' or similar
+    rows = soup.select("table.listHier tr") or soup.select("table tr")
+
+    for row in rows:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+
+        title = _extract_title_from_row(cells)
+        if not title:
+            continue
+
+        posted_date = _extract_due_date_from_row(cells)
+
+        item_id = f"resource::{site_id}::{title.lower().replace(' ', '_')}"
+        resources.append({
+            "id": item_id,
+            "title": title,
+            "course": course,
+            "posted_date": posted_date,
+            "type": "Resource",
+        })
+
+    return resources
+
+
+# ---------------------------------------------------------------------------
 # Telegram notification
 # ---------------------------------------------------------------------------
 
@@ -497,6 +547,35 @@ def send_telegram_announcement(items: list[dict]) -> None:
                 print(f"[WARN] Telegram API returned {resp.status_code}: {resp.text[:200]}")
         except requests.RequestException as exc:
             print(f"[ERROR] Could not send announcement message: {exc}")
+
+
+def send_telegram_resource(items: list[dict]) -> None:
+    """
+    Send a separate Telegram message for each newly detected resource.
+    """
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+    for item in items:
+        posted_line = f"\nAdded: {item['posted_date']}" if item.get("posted_date") else ""
+        text = (
+            f"📁 New Resource Added!\n"
+            f"Course: {item['course']}\n"
+            f"Title: {item['title']}"
+            f"{posted_line}"
+        )
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": text,
+            "parse_mode": "",
+        }
+        try:
+            resp = requests.post(api_url, data=payload, timeout=15)
+            if resp.status_code == 200:
+                print(f"[+] Resource notification sent: {item['title']}")
+            else:
+                print(f"[WARN] Telegram API returned {resp.status_code}: {resp.text[:200]}")
+        except requests.RequestException as exc:
+            print(f"[ERROR] Could not send resource message: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -680,12 +759,14 @@ def check_once(
 
     all_items: list[dict] = []          # assignments + quizzes
     all_announcements: list[dict] = []  # announcements (separate)
+    all_resources: list[dict] = []      # resources (separate)
 
     for site in sites:
         print(f"[*] Checking site: {site['title']} ...")
         all_items.extend(scrape_assignments(session, site))
         all_items.extend(scrape_quizzes(session, site))
         all_announcements.extend(scrape_announcements(session, site))
+        all_resources.extend(scrape_resources(session, site))
 
     # --- Assignments & Quizzes ---
     print(f"[*] Total assignments/quizzes found: {len(all_items)}")
@@ -714,8 +795,25 @@ def check_once(
     else:
         print("[*] No new announcements.")
 
+    # --- Resources ---
+    # Filter out resources posted before the deployment timestamp
+    post_deploy_res = [
+        r for r in all_resources
+        if _announcement_is_after_deployment(r, deployment_ts)
+    ]
+    print(f"[*] Resources found: {len(all_resources)} total, "
+          f"{len(post_deploy_res)} after deployment.")
+
+    new_resources = [r for r in post_deploy_res if r["id"] not in seen]
+    print(f"[*] New resources: {len(new_resources)}")
+
+    if new_resources:
+        send_telegram_resource(new_resources)
+    else:
+        print("[*] No new resources.")
+
     # --- Persist everything ---
-    combined = all_items + all_announcements
+    combined = all_items + all_announcements + all_resources
     items_by_id = {item["id"]: item for item in stored_items}
     for item in combined:
         items_by_id[item["id"]] = item  # overwrite with latest metadata
