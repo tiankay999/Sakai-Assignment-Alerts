@@ -35,6 +35,7 @@ SAKAI_USER = os.getenv("SAKAI_USER")
 SAKAI_PASS = os.getenv("SAKAI_PASS")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+ACTIVE_TERM = os.getenv("ACTIVE_TERM")
 
 SAKAI_BASE = "https://sakai.ug.edu.gh"
 LOGIN_URL = f"{SAKAI_BASE}/portal/xlogin"
@@ -171,6 +172,8 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
             for site in site_list:
                 site_id = site.get("id") or site.get("siteId", "")
                 title = site.get("title", "Unknown Course")
+                if ACTIVE_TERM and ACTIVE_TERM not in title:
+                    continue
                 url = f"{SAKAI_BASE}/portal/site/{site_id}"
                 sites.append({"id": site_id, "title": title, "url": url})
             if sites:
@@ -195,6 +198,8 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
                 continue
             site_id = parts[1].split("/")[0].split("?")[0]
             title = link.get_text(strip=True) or site_id
+            if ACTIVE_TERM and ACTIVE_TERM not in title:
+                continue
             if site_id and not any(s["id"] == site_id for s in sites):
                 sites.append({
                     "id": site_id,
@@ -613,6 +618,19 @@ def parse_due_date(due_date_str: str) -> date | None:
     return None
 
 
+def _is_future_or_unparseable(due_date_str: str) -> bool:
+    """
+    Return True if the date is in the future, today, or unparseable.
+    Used to filter out old assignments/quizzes whose deadlines have passed.
+    """
+    if not due_date_str:
+        return True
+    parsed = parse_due_date(due_date_str)
+    if parsed is None:
+        return True
+    return parsed >= date.today()
+
+
 def _should_send_morning_reminder() -> bool:
     """
     Return True if the current time is 8:00 AM or later and the
@@ -769,8 +787,14 @@ def check_once(
         all_resources.extend(scrape_resources(session, site))
 
     # --- Assignments & Quizzes ---
-    print(f"[*] Total assignments/quizzes found: {len(all_items)}")
-    new_items = [item for item in all_items if item["id"] not in seen]
+    # Filter out old assignments/quizzes whose due dates have already passed
+    recent_items = [
+        item for item in all_items
+        if _is_future_or_unparseable(item.get("due_date", ""))
+    ]
+    print(f"[*] Total assignments/quizzes found: {len(all_items)} total, "
+          f"{len(recent_items)} recent.")
+    new_items = [item for item in recent_items if item["id"] not in seen]
     print(f"[*] New assignments/quizzes: {len(new_items)}")
 
     if new_items:
