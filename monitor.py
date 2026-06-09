@@ -45,8 +45,8 @@ SITE_LIST_URL = f"{SAKAI_BASE}/portal/sites"
 # Format: {"ids": [...], "items": [{id, title, course, due_date, type}, ...]}
 SEEN_FILE = Path("seen.json")
 
-# Tracks the date the morning reminder was last sent (contains "YYYY-MM-DD")
-REMINDER_FILE = Path("last_reminder_date.txt")
+# Tracks the date reminders were last sent (JSON mapping window -> "YYYY-MM-DD")
+REMINDER_STATE_FILE = Path("reminder_state.json")
 
 # Records the moment the script was first deployed (ISO-8601 string).
 # Announcements older than this timestamp are silently ignored.
@@ -631,28 +631,47 @@ def _is_future_or_unparseable(due_date_str: str) -> bool:
     return parsed >= date.today()
 
 
-def _should_send_morning_reminder() -> bool:
+def _should_send_reminder(window_name: str, target_hour: int) -> bool:
     """
-    Return True if the current time is 8:00 AM or later and the
-    reminder has not already been sent today.
+    Return True if the current time is at or past target_hour and the
+    reminder for this window has not already been sent today.
     """
     now = datetime.now()
-    if now.hour < 8:
+    if now.hour < target_hour:
         return False
     today_str = now.strftime("%Y-%m-%d")
-    if REMINDER_FILE.exists() and REMINDER_FILE.read_text().strip() == today_str:
-        return False  # already sent this morning
+    
+    state = {}
+    if REMINDER_STATE_FILE.exists():
+        try:
+            with REMINDER_STATE_FILE.open("r", encoding="utf-8") as f:
+                state = json.load(f)
+        except json.JSONDecodeError:
+            pass
+            
+    if state.get(window_name) == today_str:
+        return False  # already sent this window today
     return True
 
 
-def _mark_reminder_sent() -> None:
-    """Record today's date so we don't send the reminder a second time."""
-    REMINDER_FILE.write_text(datetime.now().strftime("%Y-%m-%d"), encoding="utf-8")
+def _mark_reminder_sent(window_name: str) -> None:
+    """Record today's date for this window so we don't send it again."""
+    state = {}
+    if REMINDER_STATE_FILE.exists():
+        try:
+            with REMINDER_STATE_FILE.open("r", encoding="utf-8") as f:
+                state = json.load(f)
+        except json.JSONDecodeError:
+            pass
+            
+    state[window_name] = datetime.now().strftime("%Y-%m-%d")
+    with REMINDER_STATE_FILE.open("w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
 
 
-def _build_morning_message(items: list[dict]) -> str:
+def _build_reminder_message(items: list[dict], greeting: str) -> str:
     """
-    Build the morning summary text from the stored item list.
+    Build the summary text from the stored item list.
     Items whose due date has already passed are excluded.
     Items with no parseable due date are included with 'Due: Unknown'.
     """
@@ -667,9 +686,9 @@ def _build_morning_message(items: list[dict]) -> str:
             pending.append((item, parsed))
 
     if not pending:
-        return "✅ Good morning! No pending assignments or quizzes. Enjoy your day!"
+        return f"✅ {greeting} No pending assignments or quizzes. Enjoy your day!"
 
-    lines = ["📅 Good morning! Here are your pending tasks:\n"]
+    lines = [f"📅 {greeting} Here are your pending tasks:\n"]
     for item, parsed in pending:
         icon = "📝" if item.get("type") == "Assignment" else "🧪"
         lines.append(f"{icon} {item['type']}: {item['title']}")
@@ -690,9 +709,9 @@ def _build_morning_message(items: list[dict]) -> str:
     return "\n".join(lines).rstrip()
 
 
-def send_morning_reminder(items: list[dict]) -> None:
-    """Send the morning summary Telegram message and record that it was sent."""
-    message = _build_morning_message(items)
+def send_reminder(items: list[dict], window_name: str, greeting: str) -> None:
+    """Send the summary Telegram message and record that it was sent."""
+    message = _build_reminder_message(items, greeting)
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         resp = requests.post(
@@ -701,12 +720,12 @@ def send_morning_reminder(items: list[dict]) -> None:
             timeout=15,
         )
         if resp.status_code == 200:
-            print("[+] Morning reminder sent.")
-            _mark_reminder_sent()
+            print(f"[+] Reminder '{window_name}' sent.")
+            _mark_reminder_sent(window_name)
         else:
-            print(f"[WARN] Morning reminder failed: {resp.status_code} {resp.text[:200]}")
+            print(f"[WARN] Reminder '{window_name}' failed: {resp.status_code} {resp.text[:200]}")
     except requests.RequestException as exc:
-        print(f"[ERROR] Could not send morning reminder: {exc}")
+        print(f"[ERROR] Could not send reminder '{window_name}': {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -874,11 +893,18 @@ def main() -> None:
         login_count += 1
         print(f"\n[*] Login #{login_count} at {datetime.now():%Y-%m-%d %H:%M:%S} ...")
         try:
-            # Morning reminder runs before the scrape so it uses stored data
-            # immediately at 8 AM without waiting for a full scrape cycle.
-            if _should_send_morning_reminder():
-                print("[*] 8 AM window detected — sending morning reminder ...")
-                send_morning_reminder(stored_items)
+            # Reminders run before the scrape so they use stored data
+            # immediately at their respective windows.
+            windows = [
+                ("8am", 8, "Good morning!"),
+                ("12pm", 12, "Good afternoon!"),
+                ("6pm", 18, "Good afternoon!")
+            ]
+            
+            for win_name, hour, greeting in windows:
+                if _should_send_reminder(win_name, hour):
+                    print(f"[*] {hour}:00 window detected — sending {win_name} reminder ...")
+                    send_reminder(stored_items, win_name, greeting)
 
             seen, stored_items = check_once(
                 session, seen, stored_items, deployment_ts
