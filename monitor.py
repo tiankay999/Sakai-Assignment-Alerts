@@ -633,11 +633,11 @@ def _is_future_or_unparseable(due_date_str: str) -> bool:
 
 def _should_send_reminder(window_name: str, target_hour: int) -> bool:
     """
-    Return True if the current time is at or past target_hour and the
+    Return True if the current hour matches target_hour and the
     reminder for this window has not already been sent today.
     """
     now = datetime.now()
-    if now.hour < target_hour:
+    if now.hour != target_hour:
         return False
     today_str = now.strftime("%Y-%m-%d")
     
@@ -868,6 +868,20 @@ def check_once(
     return seen, updated_items
 
 
+def check_reminders(stored_items: list[dict]) -> None:
+    """Check all time windows and send reminders if their hour has arrived."""
+    windows = [
+        ("8am", 8, "Good morning!"),
+        ("12pm", 12, "Good afternoon!"),
+        ("6pm", 18, "Good afternoon!")
+    ]
+    
+    for win_name, hour, greeting in windows:
+        if _should_send_reminder(win_name, hour):
+            print(f"[*] {hour}:00 window detected — sending {win_name} reminder ...")
+            send_reminder(stored_items, win_name, greeting)
+
+
 def main() -> None:
     validate_env()
 
@@ -893,18 +907,8 @@ def main() -> None:
         login_count += 1
         print(f"\n[*] Login #{login_count} at {datetime.now():%Y-%m-%d %H:%M:%S} ...")
         try:
-            # Reminders run before the scrape so they use stored data
-            # immediately at their respective windows.
-            windows = [
-                ("8am", 8, "Good morning!"),
-                ("12pm", 12, "Good afternoon!"),
-                ("6pm", 18, "Good afternoon!")
-            ]
-            
-            for win_name, hour, greeting in windows:
-                if _should_send_reminder(win_name, hour):
-                    print(f"[*] {hour}:00 window detected — sending {win_name} reminder ...")
-                    send_reminder(stored_items, win_name, greeting)
+            # Check reminders at the start of the scrape cycle
+            check_reminders(stored_items)
 
             seen, stored_items = check_once(
                 session, seen, stored_items, deployment_ts
@@ -920,7 +924,10 @@ def main() -> None:
             interval = NORMAL_INTERVAL
             print(f"[*] Next login in {NORMAL_INTERVAL // 3600} hours.")
 
-        time.sleep(interval)
+        # Sleep in 1-minute chunks so we can check for reminders precisely on the hour
+        for _ in range(interval // 60):
+            time.sleep(60)
+            check_reminders(stored_items)
 
 
 if __name__ == "__main__":
