@@ -252,6 +252,19 @@ def _extract_title_from_row(cells) -> str:
     return ""
 
 
+def _get_data_rows(soup):
+    """Find the correct table and return its rows."""
+    rows = soup.select("table.listHier tr, table.table-striped tr, table.table-hover tr")
+    if rows:
+        return rows
+    valid_headers = {"title", "assignment title", "assessment title", "announcement title", "subject", "resource title"}
+    for table in soup.find_all("table"):
+        headers = {th.get_text(strip=True).lower() for th in table.find_all("th")}
+        if headers & valid_headers:
+            return table.find_all("tr")
+    return []
+
+
 def _extract_due_date_from_row(cells) -> str:
     """Return the first cell text that looks like a date, or empty string."""
     month_abbrevs = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -278,6 +291,34 @@ def scrape_assignments(session: requests.Session, site: dict) -> list[dict]:
     site_id = site["id"]
     course = site["title"]
 
+    # Try API first
+    api_url = f"{SAKAI_BASE}/direct/assignment/site/{site_id}.json"
+    time.sleep(REQUEST_DELAY)
+    try:
+        resp = session.get(api_url, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            for item in data.get("assignment_collection", []):
+                title = item.get("title", "Untitled")
+                due_date_str = ""
+                due_time_obj = item.get("dueTime")
+                if due_time_obj and "epochSecond" in due_time_obj:
+                    dt = datetime.fromtimestamp(due_time_obj["epochSecond"])
+                    due_date_str = dt.strftime("%b %d, %Y %I:%M %p")
+                
+                item_id = f"assignment::{site_id}::{title.lower().replace(' ', '_')}"
+                assignments.append({
+                    "id": item_id,
+                    "title": title,
+                    "course": course,
+                    "due_date": due_date_str,
+                    "type": "Assignment",
+                })
+            return assignments
+    except requests.RequestException:
+        pass
+
+    # Fallback to HTML
     url = f"{SAKAI_BASE}/portal/site/{site_id}/tool-reset/sakai.assignment.grades"
     time.sleep(REQUEST_DELAY)
 
@@ -289,16 +330,11 @@ def scrape_assignments(session: requests.Session, site: dict) -> list[dict]:
     except requests.RequestException:
         return assignments
 
-    # Prefer the 'listHier' table used by Sakai's assignment tool; fall back
-    # to any table on the page if that class is absent.
-    rows = soup.select("table.listHier tr") or soup.select("table tr")
-
-    for row in rows:
+    for row in _get_data_rows(soup):
         cells = row.find_all("td")
         if not cells:
-            continue  # skip header rows (<th> only)
+            continue
 
-        # Walk all cells to find the real title link, skipping numeric IDs
         title = _extract_title_from_row(cells)
         if not title:
             continue
@@ -341,7 +377,7 @@ def scrape_quizzes(session: requests.Session, site: dict) -> list[dict]:
     except requests.RequestException:
         return quizzes
 
-    for row in soup.select("table tr"):
+    for row in _get_data_rows(soup):
         cells = row.find_all("td")
         if not cells:
             continue
@@ -390,7 +426,7 @@ def scrape_announcements(session: requests.Session, site: dict) -> list[dict]:
 
     # Sakai's announcement list typically uses a table or a series of
     # div/h4 elements. Try table rows first, then fall back to heading tags.
-    rows = soup.select("table.listHier tr") or soup.select("table tr")
+    rows = _get_data_rows(soup)
 
     for row in rows:
         cells = row.find_all("td")
@@ -465,7 +501,7 @@ def scrape_resources(session: requests.Session, site: dict) -> list[dict]:
         return resources
 
     # Resources are usually in a table with class 'listHier' or similar
-    rows = soup.select("table.listHier tr") or soup.select("table tr")
+    rows = _get_data_rows(soup)
 
     for row in rows:
         cells = row.find_all("td")
