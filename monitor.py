@@ -41,16 +41,21 @@ SAKAI_BASE = "https://sakai.ug.edu.gh"
 LOGIN_URL = f"{SAKAI_BASE}/portal/xlogin"
 SITE_LIST_URL = f"{SAKAI_BASE}/portal/sites"
 
+# Directory where persistent state is stored. Override with DATA_DIR so the
+# state files can live on a mounted volume in Docker/Coolify (defaults to CWD).
+DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 # Local file that tracks which assignments/quizzes have already been seen.
 # Format: {"ids": [...], "items": [{id, title, course, due_date, type}, ...]}
-SEEN_FILE = Path("seen.json")
+SEEN_FILE = DATA_DIR / "seen.json"
 
 # Tracks the date reminders were last sent (JSON mapping window -> "YYYY-MM-DD")
-REMINDER_STATE_FILE = Path("reminder_state.json")
+REMINDER_STATE_FILE = DATA_DIR / "reminder_state.json"
 
 # Records the moment the script was first deployed (ISO-8601 string).
 # Announcements older than this timestamp are silently ignored.
-DEPLOYMENT_FILE = Path("deployment_ts.txt")
+DEPLOYMENT_FILE = DATA_DIR / "deployment_ts.txt"
 
 # Delay between HTTP requests to avoid hammering the server
 REQUEST_DELAY = 1.0  # seconds
