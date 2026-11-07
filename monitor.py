@@ -43,8 +43,27 @@ SITE_LIST_URL = f"{SAKAI_BASE}/portal/sites"
 
 # Directory where persistent state is stored. Override with DATA_DIR so the
 # state files can live on a mounted volume in Docker/Coolify (defaults to CWD).
-DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+DATA_DIR = Path(os.getenv("DATA_DIR") or ".")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _env_int(name: str, default: int) -> int:
+    """
+    Read an integer environment variable, tolerating unset, empty and
+    malformed values.
+
+    Panels like Coolify inject every declared variable, supplying an empty
+    string for the ones you left blank, so a bare int(os.getenv(...)) would
+    crash the container at import time.
+    """
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[WARN] {name}='{raw}' is not a number; using {default}.")
+        return default
 
 # Local file that tracks which assignments/quizzes have already been seen.
 # Format: {"ids": [...], "items": [{id, title, course, due_date, type}, ...]}
@@ -56,6 +75,19 @@ REMINDER_STATE_FILE = DATA_DIR / "reminder_state.json"
 # Records the moment the script was first deployed (ISO-8601 string).
 # Announcements older than this timestamp are silently ignored.
 DEPLOYMENT_FILE = DATA_DIR / "deployment_ts.txt"
+
+# Append-only hand-off queue read by the Node/Baileys WhatsApp service.
+# One JSON object per line. This file is the ONLY bridge between the two
+# processes: Python stays the source of truth for scraping, dedup and
+# scheduling; Node only formats and delivers what lands here.
+OUTBOX_FILE = DATA_DIR / "outbox.jsonl"
+
+# Rotated (truncated to a .1 backup) once it grows past this size so the
+# queue can never fill the volume. Node detects the reset via its cursor.
+OUTBOX_MAX_BYTES = _env_int("OUTBOX_MAX_BYTES", 2000000)
+
+# Heartbeat written at the end of every scrape cycle; powers `/status`.
+STATUS_FILE = DATA_DIR / "scraper_status.json"
 
 # Delay between HTTP requests to avoid hammering the server
 REQUEST_DELAY = 1.0  # seconds
@@ -99,6 +131,148 @@ def save_seen(seen_ids: set, items: list[dict]) -> None:
     """Persist seen item IDs and full item metadata to seen.json."""
     with SEEN_FILE.open("w", encoding="utf-8") as f:
         json.dump({"ids": sorted(seen_ids), "items": items}, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp hand-off queue (outbox.jsonl)
+# ---------------------------------------------------------------------------
+# The Node/Baileys service tails outbox.jsonl and delivers whatever it finds to
+# the WhatsApp groups mapped to each course. Nothing here re-implements
+# scraping, dedup or scheduling: an item only reaches the outbox once it has
+# already passed the seen.json dedup, and digests are queued from the same
+# 8am/12pm/6pm windows Telegram uses. Every helper swallows its own errors so a
+# broken volume can never take down the Telegram path or the main loop.
+
+# Sakai tool paths used to build a deep link per item type.
+_TOOL_PATHS = {
+    "Assignment": "sakai.assignment.grades",
+    "Quiz": "sakai.samigo",
+    "Announcement": "sakai.announcements",
+    "Resource": "sakai.resources",
+}
+
+
+def _item_link(item: dict) -> str:
+    """
+    Build a Sakai deep link for an item from its composite ID
+    (`<type>::<site_id>::<normalized_title>`). Returns "" if the site ID
+    cannot be recovered.
+    """
+    parts = item.get("id", "").split("::")
+    if len(parts) < 2 or not parts[1]:
+        return ""
+    site_url = f"{SAKAI_BASE}/portal/site/{parts[1]}"
+    tool = _TOOL_PATHS.get(item.get("type", ""))
+    return f"{site_url}/tool-reset/{tool}" if tool else site_url
+
+
+def _rotate_outbox_if_needed() -> None:
+    """Truncate the outbox to a single backup once it exceeds the size cap."""
+    try:
+        if OUTBOX_FILE.exists() and OUTBOX_FILE.stat().st_size > OUTBOX_MAX_BYTES:
+            backup = OUTBOX_FILE.with_suffix(".jsonl.1")
+            backup.unlink(missing_ok=True)
+            OUTBOX_FILE.replace(backup)
+            print("[*] outbox.jsonl rotated.")
+    except OSError as exc:
+        print(f"[WARN] Could not rotate outbox: {exc}")
+
+
+def _append_outbox(record: dict) -> None:
+    """Append one JSON record to the outbox. Never raises."""
+    try:
+        _rotate_outbox_if_needed()
+        with OUTBOX_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"[WARN] Could not write to outbox: {exc}")
+
+
+def queue_outbox_items(items: list[dict]) -> None:
+    """
+    Queue already-deduplicated new items for WhatsApp delivery.
+
+    `event_id` is derived from the item's own composite ID, so a retry or a
+    restart mid-write can never produce a duplicate WhatsApp message: the Node
+    side keeps a set of delivered event IDs.
+    """
+    for item in items:
+        _append_outbox({
+            "v": 1,
+            "kind": "alert",
+            "event_id": f"alert:{item.get('id', '')}",
+            "queued_at": datetime.now().isoformat(timespec="seconds"),
+            "item": {
+                "id": item.get("id", ""),
+                "type": item.get("type", "Item"),
+                "title": item.get("title", ""),
+                "course": item.get("course", ""),
+                "due_date": item.get("due_date", ""),
+                "posted_date": item.get("posted_date", ""),
+                "link": _item_link(item),
+            },
+        })
+    if items:
+        print(f"[+] Queued {len(items)} item(s) for WhatsApp delivery.")
+
+
+def queue_outbox_digest(window_name: str, greeting: str, pending: list[tuple]) -> None:
+    """
+    Queue the daily deadline digest for WhatsApp.
+
+    `pending` is the same (item, parsed_date) list the Telegram digest is built
+    from, so both channels always describe identical work. The event ID is
+    keyed to the window and the date, making a Telegram-failure retry idempotent
+    on the WhatsApp side.
+    """
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    entries = []
+    for item, parsed in pending:
+        if parsed is None:
+            due_label = "Unknown"
+        elif parsed == today:
+            due_label = "Today"
+        elif parsed == tomorrow:
+            due_label = "Tomorrow"
+        else:
+            due_label = parsed.strftime("%A, %d %b %Y")
+        entries.append({
+            "id": item.get("id", ""),
+            "type": item.get("type", "Item"),
+            "title": item.get("title", ""),
+            "course": item.get("course", ""),
+            "due_date": item.get("due_date", ""),
+            "due_label": due_label,
+            "link": _item_link(item),
+        })
+
+    _append_outbox({
+        "v": 1,
+        "kind": "digest",
+        "event_id": f"digest:{window_name}:{today.isoformat()}",
+        "queued_at": datetime.now().isoformat(timespec="seconds"),
+        "window": window_name,
+        "greeting": greeting,
+        "items": entries,
+    })
+    print(f"[+] Queued '{window_name}' digest for WhatsApp ({len(entries)} item(s)).")
+
+
+def write_status(**fields) -> None:
+    """
+    Write a small heartbeat describing the last scrape cycle so the WhatsApp
+    bot's `/status` command can report on the scraper. Never raises.
+    """
+    payload = {"updated_at": datetime.now().isoformat(timespec="seconds"), **fields}
+    try:
+        tmp = STATUS_FILE.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        tmp.replace(STATUS_FILE)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"[WARN] Could not write status file: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +714,10 @@ def send_telegram(items: list[dict]) -> None:
     Send a Telegram message for each newly detected assignment or quiz.
     Uses the Telegram Bot API sendMessage endpoint.
     """
+    # Hand the same items to the WhatsApp service first, so a Telegram outage
+    # never costs a WhatsApp broadcast (and vice versa).
+    queue_outbox_items(items)
+
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     for item in items:
@@ -570,6 +748,8 @@ def send_telegram_announcement(items: list[dict]) -> None:
     """
     Send a separate Telegram message for each newly detected announcement.
     """
+    queue_outbox_items(items)
+
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     for item in items:
@@ -599,6 +779,8 @@ def send_telegram_resource(items: list[dict]) -> None:
     """
     Send a separate Telegram message for each newly detected resource.
     """
+    queue_outbox_items(items)
+
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     for item in items:
@@ -710,6 +892,24 @@ def _mark_reminder_sent(window_name: str) -> None:
         json.dump(state, f, indent=2)
 
 
+def _pending_items(items: list[dict]) -> list[tuple]:
+    """
+    Return [(item, parsed_due_date), ...] for every item that is still
+    outstanding: due today or later, or with no parseable due date.
+
+    Shared by the Telegram digest and the WhatsApp digest so the two channels
+    can never disagree about what is pending.
+    """
+    today = date.today()
+    pending = []
+    for item in items:
+        parsed = parse_due_date(item.get("due_date", ""))
+        # Keep items with no date (unknown) and items not yet past their due date
+        if parsed is None or parsed >= today:
+            pending.append((item, parsed))
+    return pending
+
+
 def _build_reminder_message(items: list[dict], greeting: str) -> str:
     """
     Build the summary text from the stored item list.
@@ -719,12 +919,7 @@ def _build_reminder_message(items: list[dict], greeting: str) -> str:
     today = date.today()
     tomorrow = today + timedelta(days=1)
 
-    pending = []
-    for item in items:
-        parsed = parse_due_date(item.get("due_date", ""))
-        # Keep items with no date (unknown) and items not yet past their due date
-        if parsed is None or parsed >= today:
-            pending.append((item, parsed))
+    pending = _pending_items(items)
 
     if not pending:
         return f"✅ {greeting} No pending assignments or quizzes. Enjoy your day!"
@@ -752,6 +947,9 @@ def _build_reminder_message(items: list[dict], greeting: str) -> str:
 
 def send_reminder(items: list[dict], window_name: str, greeting: str) -> None:
     """Send the summary Telegram message and record that it was sent."""
+    # Same window, same pending set, both channels.
+    queue_outbox_digest(window_name, greeting, _pending_items(items))
+
     message = _build_reminder_message(items, greeting)
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
@@ -828,11 +1026,13 @@ def check_once(
     """
     if not sakai_login(session):
         print("[WARN] Login failed this cycle; will retry next interval.")
+        write_status(last_cycle="login_failed", tracked_items=len(seen))
         return seen, stored_items
 
     sites = get_enrolled_sites(session)
     if not sites:
         print("[WARN] No enrolled sites found this cycle.")
+        write_status(last_cycle="no_sites", tracked_items=len(seen))
         return seen, stored_items
 
     all_items: list[dict] = []          # assignments + quizzes
@@ -906,6 +1106,19 @@ def check_once(
     seen.update(item["id"] for item in combined)
     save_seen(seen, updated_items)
     print(f"[*] seen.json updated ({len(seen)} total items tracked).")
+
+    write_status(
+        last_cycle="ok",
+        sites=len(sites),
+        courses=[site["title"] for site in sites],
+        tracked_items=len(seen),
+        pending_items=len(_pending_items(updated_items)),
+        new_last_cycle={
+            "assignments_quizzes": len(new_items),
+            "announcements": len(new_announcements),
+            "resources": len(new_resources),
+        },
+    )
     return seen, updated_items
 
 

@@ -7,3 +7,6 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+outbox.jsonl
+outbox.jsonl.1
+scraper_status.json

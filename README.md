@@ -136,3 +136,32 @@ AssignmentDey/
 | *Old assignments/resources appearing* | Set the `ACTIVE_TERM` in your `.env` file to your current semester (e.g. `S1-2526`) to completely block old courses. |
 | *Telegram message not received* | Verify the token and chat ID; make sure you started a conversation with the bot. |
 | *Items re-notified every run* | Check that `seen.json` is being written correctly (disk permissions). |
+---
+
+## WhatsApp channel (optional)
+
+Telegram keeps working exactly as described above. A WhatsApp bot can run **alongside** it,
+broadcasting the same alerts to class groups and answering questions in those groups.
+
+The scraper is unchanged as the source of truth. It now also appends every alert and every
+8AM/12PM/6PM digest to `$DATA_DIR/outbox.jsonl`, and writes a heartbeat to
+`$DATA_DIR/scraper_status.json`. A separate Node service tails that file and delivers the
+messages. If the WhatsApp side is not running, the file simply grows and delivery catches up
+later — nothing about Telegram changes, and nothing is lost.
+
+```bash
+# from the workspace root (one level up), runs scraper + bot on a shared /data volume
+docker compose up -d --build
+docker compose logs -f whatsapp   # scan the QR shown here with the BOT's number, once
+```
+
+Setup, the full command list and the group mapping guide are in
+[`../WhatsappBot/README.md`](../WhatsappBot/README.md).
+
+Two things worth repeating:
+
+- **Use a dedicated second number for the bot, never your personal one.** Automated WhatsApp
+  accounts carry a real ban risk.
+- **No per-student Sakai credentials, ever.** The bot still logs in as your single account and
+  broadcasts course-level items shared with the whole class. Group members are identified by
+  WhatsApp number only.

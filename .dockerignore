@@ -9,3 +9,6 @@ __pycache__/
 .venv/
 venv/
 .git/
+outbox.jsonl
+outbox.jsonl.1
+scraper_status.json
