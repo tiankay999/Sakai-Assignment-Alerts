@@ -31,7 +31,7 @@ import {
 import { courseCode, truncate } from './util.js';
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const REQUEST_TIMEOUT_MS = 25_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_GROUNDING_CHARS = 3000;
 const MAX_QUESTION_CHARS = 700;
 const HISTORY_TTL_MS = 2 * 60 * 60 * 1000;
