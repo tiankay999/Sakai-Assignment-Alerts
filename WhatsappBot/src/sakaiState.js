@@ -113,6 +113,18 @@ export function pendingDeadlines() {
 /** Distinct course titles seen by the scraper, with their derived codes. */
 export function knownCourses() {
   const map = new Map();
+
+  // 1. Actively tracked course sites from scraper heartbeat
+  const status = scraperStatus();
+  if (Array.isArray(status?.courses)) {
+    for (const title of status.courses) {
+      if (title && !map.has(title)) {
+        map.set(title, courseCode(title));
+      }
+    }
+  }
+
+  // 2. Courses that have items in seen.json
   for (const item of allItems()) {
     const title = item.course;
     if (!title || map.has(title)) continue;

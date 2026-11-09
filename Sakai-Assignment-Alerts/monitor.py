@@ -37,6 +37,7 @@ SAKAI_PASS = os.getenv("SAKAI_PASS")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 ACTIVE_TERM = os.getenv("ACTIVE_TERM")
+EXCLUDE_COURSES = os.getenv("EXCLUDE_COURSES", "")
 
 SAKAI_BASE = "https://sakai.ug.edu.gh"
 LOGIN_URL = f"{SAKAI_BASE}/portal/xlogin"
@@ -324,6 +325,15 @@ def sakai_login(session: requests.Session) -> bool:
     return False
 
 
+def _is_excluded(title: str, site_id: str = "") -> bool:
+    """Return True if the course matches any term in EXCLUDE_COURSES."""
+    if not EXCLUDE_COURSES or not EXCLUDE_COURSES.strip():
+        return False
+    terms = [t.strip().lower() for t in re.split(r"[,;|]+", EXCLUDE_COURSES) if t.strip()]
+    combined = f"{title} {site_id}".lower()
+    return any(t in combined for t in terms)
+
+
 def _matches_active_term(title: str, site_id: str = "") -> bool:
     """
     Return True if the course matches the active term or level filter.
@@ -331,6 +341,8 @@ def _matches_active_term(title: str, site_id: str = "") -> bool:
     Case-insensitive matching across both title and site_id.
     If ACTIVE_TERM is not set, all non-workspace courses match.
     """
+    if _is_excluded(title, site_id):
+        return False
     if not ACTIVE_TERM or not ACTIVE_TERM.strip():
         return True
     terms = [t.strip().lower() for t in re.split(r"[,;|]+", ACTIVE_TERM) if t.strip()]
@@ -366,6 +378,10 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
         if not s_id or s_id.startswith("~") or s_id in seen_ids:
             return
         if s_title.lower() in ("home", "my workspace", "administration workspace"):
+            return
+
+        if _is_excluded(s_title, s_id):
+            print(f"[-] [{source}] Excluded course: '{s_title}' (matches EXCLUDE_COURSES '{EXCLUDE_COURSES}')")
             return
 
         if _matches_active_term(s_title, s_id):
@@ -449,7 +465,11 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
     except requests.RequestException as exc:
         print(f"[WARN] Could not scrape portal HTML for sites: {exc}")
 
+    print(f"\n[+] ===========================================")
     print(f"[+] Total active courses tracked: {len(sites)}")
+    for i, s in enumerate(sites, 1):
+        print(f"    {i}. {s['title']} (ID: {s['id']})")
+    print(f"[+] ===========================================\n")
     return sites
 
 
