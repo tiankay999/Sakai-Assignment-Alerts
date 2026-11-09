@@ -1,0 +1,20 @@
+{
+  "name": "sakai-whatsapp-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WhatsApp (Baileys) broadcast + group assistant layer for Sakai-Assignment-Alerts",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "dotenv": "^16.4.5",
+    "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

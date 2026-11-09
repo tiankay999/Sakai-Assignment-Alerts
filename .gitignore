@@ -1,12 +1,31 @@
+# Secrets - never commit
 .env
+*/.env
+
+# Runtime state (lives on the Docker volume, not in git)
+data/
+*/data/
 seen.json
+reminder_state.json
 deployment_ts.txt
-last_reminder_date.txt
+outbox.jsonl
+outbox.jsonl.1
+outbox_cursor.json
+scraper_status.json
+groups.json
+sponsors.json
+moderation.json
+llm_usage.json
+bot_state.json
+baileys_auth/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 .venv/
 venv/
-outbox.jsonl
-outbox.jsonl.1
-scraper_status.json

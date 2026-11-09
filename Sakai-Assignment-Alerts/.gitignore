@@ -1,0 +1,12 @@
+.env
+seen.json
+deployment_ts.txt
+last_reminder_date.txt
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+outbox.jsonl
+outbox.jsonl.1
+scraper_status.json

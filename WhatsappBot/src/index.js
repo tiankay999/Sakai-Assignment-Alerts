@@ -1,0 +1,161 @@
+/**
+ * Entry point.
+ *
+ * Wires the four pieces together:
+ *   outbox.jsonl (written by monitor.py)  ->  broadcaster  ->  WhatsApp groups
+ *   incoming group message  ->  command parser or Gemini assistant
+ *
+ * The Python scraper remains the source of truth for everything Sakai. This
+ * service never logs into Sakai, never asks anyone for credentials, and holds
+ * no student identity beyond the WhatsApp numbers on the admin and mute lists.
+ */
+import { config, configProblems, redacted } from './config.js';
+import { logger } from './logger.js';
+import { createWhatsApp } from './whatsapp.js';
+import { createBroadcaster } from './broadcaster.js';
+import { createAssistant } from './assistant.js';
+import { createCommands } from './commands.js';
+import { startOutboxWatcher } from './outbox.js';
+import { botState, isMuted } from './store.js';
+import {
+  contextInfoOf,
+  isGroupJid,
+  jidDigits,
+  messageText,
+  senderIdentifiers,
+  senderJid,
+} from './util.js';
+
+// Chats that are never worth handling.
+const IGNORED_CHATS = ['status@broadcast'];
+
+function isIgnoredChat(jid) {
+  return !jid || IGNORED_CHATS.includes(jid) || jid.endsWith('@newsletter');
+}
+
+/** Was the bot @mentioned in this message? */
+function mentionsBot(msg, botNumbers) {
+  const ctx = contextInfoOf(msg);
+  const mentioned = ctx?.mentionedJid ?? [];
+  return mentioned.some((jid) => botNumbers.includes(jidDigits(jid)));
+}
+
+/** Is this a reply to one of the bot's own messages? */
+function repliesToBot(msg, botNumbers) {
+  const ctx = contextInfoOf(msg);
+  if (!ctx?.quotedMessage) return false;
+  const candidates = [ctx.participant, ctx.remoteJid].filter(Boolean);
+  return candidates.some((jid) => botNumbers.includes(jidDigits(jid)));
+}
+
+/** Remove "@2332..." mention tokens so the model sees a clean question. */
+function stripMentions(text, botNumbers) {
+  let out = text;
+  for (const number of botNumbers) {
+    out = out.split(`@${number}`).join(' ');
+  }
+  return out.replace(/\s{2,}/g, ' ').trim();
+}
+
+async function main() {
+  logger.info(redacted(), 'starting whatsapp bot');
+  for (const problem of configProblems()) logger.warn(problem);
+
+  botState.data.startedAt = new Date().toISOString();
+  botState.save();
+
+  const assistant = createAssistant();
+
+  const whatsapp = createWhatsApp({
+    onMessage: async (msg) => {
+      const chatJid = msg.key?.remoteJid;
+      if (isIgnoredChat(chatJid)) return;
+
+      const text = messageText(msg);
+      if (!text) return;
+
+      const botNumbers = whatsapp.botNumbers();
+      const identifiers = senderIdentifiers(msg);
+      const isAdmin = identifiers.some((d) => config.adminNumbers.includes(d));
+      const muted = isMuted(identifiers);
+
+      // --- Commands -------------------------------------------------------
+      if (text.startsWith(config.commandPrefix)) {
+        const result = await commands.handle({ msg, chatJid, text, isAdmin });
+        if (result === null || result === undefined) return;
+
+        // /ask is routed through the same assistant path as an @mention.
+        if (typeof result === 'object' && 'assistantQuestion' in result) {
+          await answer({
+            chatJid,
+            msg,
+            question: result.assistantQuestion,
+            identifiers,
+            muted,
+          });
+          return;
+        }
+
+        await whatsapp.sendNow(chatJid, result, { quoted: msg });
+        return;
+      }
+
+      // --- Assistant triggers ---------------------------------------------
+      // Nothing else in a group gets a reply. No always-on listening.
+      const triggered = mentionsBot(msg, botNumbers) || repliesToBot(msg, botNumbers);
+      if (!triggered) return;
+
+      await answer({
+        chatJid,
+        msg,
+        question: stripMentions(text, botNumbers),
+        identifiers,
+        muted,
+      });
+    },
+  });
+
+  const broadcaster = createBroadcaster({ whatsapp });
+  const commands = createCommands({ whatsapp, broadcaster, assistant });
+
+  /** Shared assistant path for /ask, @mentions and replies. */
+  async function answer({ chatJid, msg, question, identifiers, muted }) {
+    // Muted users get silence, not an explanation.
+    if (muted) {
+      logger.debug({ chatJid }, 'muted user triggered the assistant, ignoring');
+      return;
+    }
+
+    const userKey = identifiers[0] ?? senderJid(msg) ?? 'unknown';
+    await whatsapp.showTyping(chatJid);
+
+    const result = await assistant.ask({ chatJid, userKey, question });
+
+    if (result.ok) {
+      await whatsapp.sendNow(chatJid, result.text, { quoted: msg });
+      logger.info({ chatJid, group: isGroupJid(chatJid) }, 'assistant replied');
+      return;
+    }
+    if (result.silent) return;
+    if (result.notice) await whatsapp.sendNow(chatJid, result.notice, { quoted: msg });
+  }
+
+  const stopWatcher = startOutboxWatcher({
+    onEvent: (record) => broadcaster.handleEvent(record),
+  });
+
+  await whatsapp.connect();
+
+  const shutdown = (signal) => {
+    logger.info({ signal }, 'shutting down');
+    stopWatcher();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  logger.error({ err: err.message, stack: err.stack }, 'fatal startup error');
+  process.exit(1);
+});

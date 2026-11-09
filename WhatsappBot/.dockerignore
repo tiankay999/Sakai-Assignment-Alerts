@@ -1,0 +1,7 @@
+node_modules/
+npm-debug.log
+.env
+baileys_auth/
+data/
+*.jsonl
+.git/

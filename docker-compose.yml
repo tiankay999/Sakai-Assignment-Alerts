@@ -1,0 +1,78 @@
+# Runs the Python scraper and the Node/Baileys WhatsApp bot side by side,
+# sharing one /data volume. The volume is the bridge: the scraper appends to
+# /data/outbox.jsonl and the bot tails it. It also holds seen.json, the Baileys
+# auth state (so you only link once) and the bot's JSON config.
+#
+# Local:
+#   cp .env.example .env     # fill it in
+#   docker compose up -d --build
+#   docker compose logs -f whatsapp     # scan the QR / read the pairing code
+#
+# Coolify: set the same variables in the UI instead of using a .env file.
+# See DEPLOY.md.
+#
+# Variables are listed per service on purpose. The WhatsApp container is the
+# one exposed to the public internet and running an LLM over group messages,
+# so it never receives SAKAI_PASS or TELEGRAM_TOKEN. Unset optional values
+# arrive as empty strings and both services fall back to their defaults.
+
+services:
+  # Existing Telegram scraper. Unchanged behaviour: it still sends every
+  # Telegram alert and digest, and now also appends them to outbox.jsonl.
+  scraper:
+    build: ./Sakai-Assignment-Alerts
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      PYTHONUNBUFFERED: "1"
+      SAKAI_USER: ${SAKAI_USER}
+      SAKAI_PASS: ${SAKAI_PASS}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      ACTIVE_TERM: ${ACTIVE_TERM}
+      OUTBOX_MAX_BYTES: ${OUTBOX_MAX_BYTES}
+    volumes:
+      - assignmentdey_data:/data
+
+  # WhatsApp broadcasting + group assistant. Dedicated second number.
+  whatsapp:
+    build: ./WhatsappBot
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      # --- linking ---
+      ADMIN_NUMBERS: ${ADMIN_NUMBERS}
+      LOGIN_METHOD: ${LOGIN_METHOD}
+      BOT_NUMBER: ${BOT_NUMBER}
+      PAIRING_CODE: ${PAIRING_CODE}
+      # --- assistant ---
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL}
+      GEMINI_THINKING_BUDGET: ${GEMINI_THINKING_BUDGET}
+      LLM_RATE_LIMIT: ${LLM_RATE_LIMIT}
+      LLM_RATE_WINDOW_MINUTES: ${LLM_RATE_WINDOW_MINUTES}
+      LLM_MONTHLY_CAP: ${LLM_MONTHLY_CAP}
+      LLM_MONTHLY_COST_CAP: ${LLM_MONTHLY_COST_CAP}
+      LLM_INPUT_PRICE_PER_MTOK: ${LLM_INPUT_PRICE_PER_MTOK}
+      LLM_OUTPUT_PRICE_PER_MTOK: ${LLM_OUTPUT_PRICE_PER_MTOK}
+      LLM_CONTEXT_TURNS: ${LLM_CONTEXT_TURNS}
+      LLM_MAX_REPLY_CHARS: ${LLM_MAX_REPLY_CHARS}
+      # --- behaviour ---
+      COMMAND_PREFIX: ${COMMAND_PREFIX}
+      SEND_MIN_DELAY_MS: ${SEND_MIN_DELAY_MS}
+      SEND_MAX_DELAY_MS: ${SEND_MAX_DELAY_MS}
+      OUTBOX_POLL_MS: ${OUTBOX_POLL_MS}
+      QUESTIONSDEY_URL: ${QUESTIONSDEY_URL}
+      BOT_NAME: ${BOT_NAME}
+      SAKAI_BASE: ${SAKAI_BASE}
+      LOG_LEVEL: ${LOG_LEVEL}
+    volumes:
+      - assignmentdey_data:/data
+    # Keeps the QR code legible in the logs.
+    stdin_open: true
+    tty: true
+    depends_on:
+      - scraper
+
+volumes:
+  assignmentdey_data:
