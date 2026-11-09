@@ -135,6 +135,10 @@ export function createWhatsApp({ onMessage }) {
   }
 
   async function connect() {
+    if (process.env.RESET_AUTH === 'true') {
+      logger.warn({ authDir: config.authDir }, 'RESET_AUTH=true detected: wiping baileys_auth directory for a clean link');
+      fs.rmSync(config.authDir, { recursive: true, force: true });
+    }
     fs.mkdirSync(config.authDir, { recursive: true });
     const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
     const { version } = await fetchLatestBaileysVersion();

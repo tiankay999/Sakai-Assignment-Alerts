@@ -41,6 +41,7 @@ services:
     environment:
       DATA_DIR: /data
       # --- linking ---
+      RESET_AUTH: ${RESET_AUTH}
       ADMIN_NUMBERS: ${ADMIN_NUMBERS}
       LOGIN_METHOD: ${LOGIN_METHOD}
       BOT_NUMBER: ${BOT_NUMBER}
