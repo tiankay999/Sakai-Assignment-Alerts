@@ -16,6 +16,7 @@ Announcements:
 
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, date, timedelta
@@ -323,6 +324,21 @@ def sakai_login(session: requests.Session) -> bool:
     return False
 
 
+def _matches_active_term(title: str) -> bool:
+    """
+    Return True if the course title matches the ACTIVE_TERM filter.
+    Supports comma- or semicolon-separated terms (e.g. '2627, 26/27, S1-2627').
+    Case-insensitive matching.
+    """
+    if not ACTIVE_TERM or not ACTIVE_TERM.strip():
+        return True
+    terms = [t.strip().lower() for t in re.split(r"[,;|]+", ACTIVE_TERM) if t.strip()]
+    if not terms:
+        return True
+    title_lower = title.lower()
+    return any(t in title_lower for t in terms)
+
+
 # ---------------------------------------------------------------------------
 # Site discovery
 # ---------------------------------------------------------------------------
@@ -360,7 +376,7 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
                         # Skip private user workspaces (~10xxxxxx) or Home
                         if not site_id or site_id.startswith("~") or title.lower() in ("home", "my workspace"):
                             continue
-                        if ACTIVE_TERM and ACTIVE_TERM not in title:
+                        if not _matches_active_term(title):
                             continue
                         if not any(s["id"] == site_id for s in sites):
                             sites.append({
@@ -389,7 +405,7 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
             title = link.get_text(strip=True) or site_id
             if not site_id or site_id.startswith("~") or title.lower() in ("home", "my workspace"):
                 continue
-            if ACTIVE_TERM and ACTIVE_TERM not in title:
+            if not _matches_active_term(title):
                 continue
             if not any(s["id"] == site_id for s in sites):
                 sites.append({
