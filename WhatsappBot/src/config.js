@@ -66,8 +66,8 @@ export const config = {
   customPairingCode: str('PAIRING_CODE').trim().toUpperCase(),
 
   gemini: {
-    apiKey: str('GEMINI_API_KEY'),
-    model: str('GEMINI_MODEL', 'gemini-2.0-flash'),
+    apiKey: str('GROQ_API_KEY') || str('GEMINI_API_KEY'),
+    model: str('LLM_MODEL') || str('GEMINI_MODEL', str('GROQ_API_KEY') ? 'llama-3.3-70b-versatile' : 'gemini-1.5-flash'),
     rateLimit: int('LLM_RATE_LIMIT', 5),
     rateWindowMs: int('LLM_RATE_WINDOW_MINUTES', 60) * 60 * 1000,
     monthlyTokenCap: int('LLM_MONTHLY_CAP', 1000000),

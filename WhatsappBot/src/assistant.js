@@ -130,6 +130,63 @@ export function createAssistant() {
     histories.delete(chatJid);
   }
 
+  async function callGroq(questionText, chatHistory) {
+    const apiKey = process.env.GROQ_API_KEY || config.gemini.apiKey;
+    const model = process.env.LLM_MODEL || (config.gemini.model.includes('llama') ? config.gemini.model : 'llama-3.3-70b-versatile');
+
+    const messages = [
+      { role: 'system', content: systemPrompt() },
+      ...chatHistory.map((turn) => ({
+        role: turn.role === 'model' ? 'assistant' : 'user',
+        content: turn.parts ? turn.parts[0].text : turn.text,
+      })),
+      { role: 'user', content: questionText },
+    ];
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.4,
+          max_tokens: 700,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) {
+        logger.error({ status: resp.status, model }, 'groq request failed');
+        return { ok: false, reason: resp.status === 429 ? 'quota' : 'api' };
+      }
+
+      const data = await resp.json();
+      const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+      if (!text) return { ok: false, reason: 'empty' };
+
+      const usageMeta = data.usage ?? {};
+      recordTokens({
+        promptTokens: usageMeta.prompt_tokens ?? 0,
+        outputTokens: usageMeta.completion_tokens ?? 0,
+        totalTokens: usageMeta.total_tokens ?? 0,
+      });
+
+      return { ok: true, text };
+    } catch (err) {
+      const reason = err.name === 'AbortError' ? 'timeout' : 'network';
+      logger.error({ err: err.message, reason }, 'groq call errored');
+      return { ok: false, reason };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function callGemini(contents) {
     const { model, apiKey } = config.gemini;
     const generationConfig = {
@@ -242,7 +299,10 @@ export function createAssistant() {
       },
     ];
 
-    const result = await callGemini(contents);
+    const isGroq = Boolean(process.env.GROQ_API_KEY) || config.gemini.model.toLowerCase().includes('llama');
+    const result = isGroq
+      ? await callGroq(`${groundingBlock()}\n\nQuestion from the group:\n${trimmedQuestion}`, history(chatJid))
+      : await callGemini(contents);
     if (!result.ok) {
       const notices = {
         quota: 'The AI service is rate-limiting me right now. Try again in a few minutes.',
