@@ -324,19 +324,20 @@ def sakai_login(session: requests.Session) -> bool:
     return False
 
 
-def _matches_active_term(title: str) -> bool:
+def _matches_active_term(title: str, site_id: str = "") -> bool:
     """
-    Return True if the course title matches the ACTIVE_TERM filter.
-    Supports comma- or semicolon-separated terms (e.g. '2627, 26/27, S1-2627').
-    Case-insensitive matching.
+    Return True if the course matches the active term or level filter.
+    Supports comma- or semicolon-separated terms (e.g. '2627, 26/27, 2026/2027, dcit 3, 300').
+    Case-insensitive matching across both title and site_id.
+    If ACTIVE_TERM is not set, all non-workspace courses match.
     """
     if not ACTIVE_TERM or not ACTIVE_TERM.strip():
         return True
     terms = [t.strip().lower() for t in re.split(r"[,;|]+", ACTIVE_TERM) if t.strip()]
     if not terms:
         return True
-    title_lower = title.lower()
-    return any(t in title_lower for t in terms)
+    combined = f"{title} {site_id}".lower()
+    return any(t in combined for t in terms)
 
 
 # ---------------------------------------------------------------------------
@@ -348,75 +349,107 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
     Return a list of sites the user is enrolled in.
     Each entry is {'id': str, 'title': str, 'url': str}.
 
-    Queries Sakai's REST EntityBroker endpoints first (/direct/site.json),
-    falling back to scraping the portal navigation.
+    Queries:
+      1. Sakai favorites/sites JSON API (/portal/favorites/list)
+      2. Sakai REST EntityBroker endpoints (/direct/site.json, /direct/membership/my.json)
+      3. Sakai Morpheus portal sidebar & navigation HTML (both pinned & unpinned sites)
     """
-    print("[*] Fetching enrolled course list ...")
+    print("[*] Fetching enrolled course list from Sakai ...")
     time.sleep(REQUEST_DELAY)
 
     sites = []
+    seen_ids = set()
 
-    # Try Sakai REST API endpoints for user sites
+    def add_site(s_id: str, s_title: str, source: str):
+        s_id = (s_id or "").strip()
+        s_title = (s_title or "").strip() or s_id
+        if not s_id or s_id.startswith("~") or s_id in seen_ids:
+            return
+        if s_title.lower() in ("home", "my workspace", "administration workspace"):
+            return
+
+        if _matches_active_term(s_title, s_id):
+            seen_ids.add(s_id)
+            sites.append({
+                "id": s_id,
+                "title": s_title,
+                "url": f"{SAKAI_BASE}/portal/site/{s_id}",
+            })
+            print(f"[+] [{source}] Included course: '{s_title}' (ID: {s_id})")
+        else:
+            print(f"[-] [{source}] Skipped course: '{s_title}' (does not match ACTIVE_TERM filter '{ACTIVE_TERM}')")
+
+    # 1. Try /portal/favorites/list endpoint
+    try:
+        fav_resp = session.get(f"{SAKAI_BASE}/portal/favorites/list", timeout=15)
+        if fav_resp.status_code == 200:
+            fav_data = fav_resp.json()
+            # If sites array is returned directly
+            raw_sites = fav_data.get("sites") or fav_data.get("site_collection") or []
+            if isinstance(raw_sites, list):
+                for s in raw_sites:
+                    s_id = s.get("id") or s.get("siteId") or ""
+                    s_title = s.get("title") or s.get("siteTitle") or ""
+                    add_site(s_id, s_title, "Favorites API")
+    except Exception as exc:
+        print(f"[DEBUG] /portal/favorites/list check skipped: {exc}")
+
+    # 2. Try REST EntityBroker endpoints
     endpoints = [
         f"{SAKAI_BASE}/direct/site.json",
         f"{SAKAI_BASE}/direct/site.json?_limit=100",
         f"{SAKAI_BASE}/direct/membership/my.json",
     ]
-
     for ep in endpoints:
         try:
             resp = session.get(ep, timeout=15, headers={"Accept": "application/json"})
             if resp.status_code == 200:
                 data = resp.json()
-                site_list = data.get("site_collection", data) if isinstance(data, dict) else data
-                if isinstance(site_list, list) and site_list:
-                    for site in site_list:
-                        site_id = site.get("id") or site.get("siteId", "")
-                        title = site.get("title", "Unknown Course")
-                        # Skip private user workspaces (~10xxxxxx) or Home
-                        if not site_id or site_id.startswith("~") or title.lower() in ("home", "my workspace"):
-                            continue
-                        if not _matches_active_term(title):
-                            continue
-                        if not any(s["id"] == site_id for s in sites):
-                            sites.append({
-                                "id": site_id,
-                                "title": title,
-                                "url": f"{SAKAI_BASE}/portal/site/{site_id}",
-                            })
-                    if sites:
-                        print(f"[+] Found {len(sites)} enrolled sites via REST API ({ep}).")
-                        return sites
+                items = (
+                    data.get("site_collection")
+                    or data.get("membership_collection")
+                    or (data if isinstance(data, list) else [])
+                )
+                if isinstance(items, list):
+                    for item in items:
+                        s_id = item.get("id") or item.get("siteId") or item.get("locationId") or ""
+                        s_title = item.get("title") or item.get("locationTitle") or ""
+                        add_site(s_id, s_title, "REST API")
         except Exception:
             pass
 
-    # Fallback: scrape the portal HTML for site links (e.g. top navigation bar)
+    # 3. Scrape the portal HTML for all site links (both pinned topbar and sidebar drawer)
     try:
         resp = session.get(f"{SAKAI_BASE}/portal", timeout=15)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
+        # 3a. Search all links pointing to /portal/site/
         for link in soup.select("a[href*='/portal/site/']"):
             href = link.get("href", "")
             parts = href.split("/portal/site/")
             if len(parts) < 2:
                 continue
-            site_id = parts[1].split("/")[0].split("?")[0]
-            title = link.get_text(strip=True) or site_id
-            if not site_id or site_id.startswith("~") or title.lower() in ("home", "my workspace"):
-                continue
-            if not _matches_active_term(title):
-                continue
-            if not any(s["id"] == site_id for s in sites):
-                sites.append({
-                    "id": site_id,
-                    "title": title,
-                    "url": f"{SAKAI_BASE}/portal/site/{site_id}",
-                })
-    except requests.RequestException as exc:
-        print(f"[WARN] Could not scrape portal for sites: {exc}")
+            s_id = parts[1].split("/")[0].split("?")[0]
+            # Try to get the cleanest title text
+            title_el = link.select_one(".site-list-item-title") or link
+            s_title = title_el.get_text(strip=True) or link.get("title", "") or s_id
+            add_site(s_id, s_title, "Portal Link")
 
-    print(f"[+] Found {len(sites)} enrolled sites via HTML scraping.")
+        # 3b. Search any .site-list-item elements in sidebar
+        for item in soup.select(".site-list-item, .fav-sites-entry"):
+            a = item.select_one("a[href*='/portal/site/']")
+            if a:
+                href = a.get("href", "")
+                parts = href.split("/portal/site/")
+                if len(parts) >= 2:
+                    s_id = parts[1].split("/")[0].split("?")[0]
+                    s_title = a.get_text(strip=True) or a.get("title", "") or s_id
+                    add_site(s_id, s_title, "Sidebar Item")
+    except requests.RequestException as exc:
+        print(f"[WARN] Could not scrape portal HTML for sites: {exc}")
+
+    print(f"[+] Total active courses tracked: {len(sites)}")
     return sites
 
 
