@@ -32,7 +32,7 @@ import { knownCourses, scraperStatus } from './sakaiState.js';
 import { isGroupJid, normalizeNumber, senderIdentifiers } from './util.js';
 
 /** Commands anyone may use. Everything else is admin-only. */
-const PUBLIC_COMMANDS = new Set(['ask', 'help', 'deadlines']);
+const PUBLIC_COMMANDS = new Set(['ask', 'help', 'deadlines', 'id']);
 
 function parse(text) {
   const prefix = config.commandPrefix;
@@ -159,10 +159,13 @@ export function createCommands({ whatsapp, broadcaster, assistant }) {
     const { name, args, rest } = parsed;
 
     if (!PUBLIC_COMMANDS.has(name) && !isAdmin) {
-      // Silent on purpose: no reply, no content logged, just a counter.
       botState.data.ignoredCommands += 1;
       botState.save();
       logger.debug({ chatJid }, 'ignored command from non-admin');
+      // In direct messages (DM), provide feedback so the admin knows what to do
+      if (!isGroupJid(chatJid)) {
+        return '⚠️ You are not recognized as an admin. Send /id to check your number, then add it to ADMIN_NUMBERS in Coolify.';
+      }
       return null;
     }
 
