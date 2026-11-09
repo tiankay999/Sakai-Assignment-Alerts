@@ -64,6 +64,17 @@ export function createWhatsApp({ onMessage }) {
   }
 
   function showQr(qr) {
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
+    process.stdout.write(
+      [
+        '',
+        '  ========================================================================',
+        '   IF THE TERMINAL QR CODE LOOKS DISTORTED, OPEN THIS IN YOUR BROWSER:',
+        `   ${qrImageUrl}`,
+        '  ========================================================================',
+        '',
+      ].join('\n'),
+    );
     logger.info('scan this QR with the BOT number (WhatsApp > Linked devices > Link a device)');
     qrcode.generate(qr, { small: true });
   }
@@ -93,6 +104,7 @@ export function createWhatsApp({ onMessage }) {
       lastPairingRequestAt = Date.now();
 
       const pretty = code?.match(/.{1,4}/g)?.join('-') ?? code;
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
       // Printed directly so it stays readable among the JSON log lines.
       process.stdout.write(
         [
@@ -104,6 +116,10 @@ export function createWhatsApp({ onMessage }) {
           '   WhatsApp > Settings > Linked devices >',
           '   Link a device > Link with phone number instead',
           '   then type the code above.',
+          '',
+          '   --- OR SCAN VIA BROWSER IF PAIRING FAILS ---',
+          `   ${qrImageUrl}`,
+          '  ===============================================',
           '',
           '',
         ].join('\n'),
@@ -130,7 +146,7 @@ export function createWhatsApp({ onMessage }) {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, baileysLogger),
       },
-      browser: Browsers ? Browsers.ubuntu('Chrome') : undefined,
+      browser: Browsers ? Browsers.macOS('Desktop') : undefined,
       // The QR is rendered from the connection.update event below, so the
       // deprecated printQRInTerminal option is deliberately not passed.
       // Keep the bot number looking like a passive device.
