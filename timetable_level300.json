@@ -1,0 +1,587 @@
+{
+  "meta": {
+    "timetableId": 1,
+    "academicYear": "2026/2027",
+    "semester": "First Semester",
+    "updatedAt": "2026-10-30T07:58:28.235993",
+    "count": 18
+  },
+  "entries": [
+    {
+      "id": "seed-004-0730",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "07:30",
+      "endTime": "08:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 311",
+      "courseTitle": "Machine Learning",
+      "venue": "JQB19",
+      "lecturer": "Prof. Justice Kwame Appati",
+      "status": "Elective (CS)",
+      "raw": {
+        "id": "seed-004-0730",
+        "level": 300,
+        "day": "MON",
+        "start": "07:30",
+        "hours": 1,
+        "course": "DCIT 311",
+        "title": "Machine Learning",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "JKA",
+            "fullName": "Prof. Justice Kwame Appati"
+          }
+        ],
+        "venue": "JQB19",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-004-0830",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "08:30",
+      "endTime": "09:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 307",
+      "courseTitle": "Mini Project",
+      "venue": "JQB19",
+      "lecturer": "Mr. Mark Atta Mensah",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-004-0830",
+        "level": 300,
+        "day": "MON",
+        "start": "08:30",
+        "hours": 1,
+        "course": "DCIT 307",
+        "title": "Mini Project",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "MAM",
+            "fullName": "Mr. Mark Atta Mensah"
+          }
+        ],
+        "venue": "JQB19",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-009",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "13:30",
+      "endTime": "15:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 323",
+      "courseTitle": "Multimedia and Web Design",
+      "venue": "LOT1",
+      "lecturer": "Dr. Michael Soli",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-009",
+        "level": 300,
+        "day": "MON",
+        "start": "13:30",
+        "hours": 2,
+        "course": "DCIT 323",
+        "title": "Multimedia and Web Design",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "MS",
+            "fullName": "Dr. Michael Soli"
+          }
+        ],
+        "venue": "LOT1",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "e-mvs51abf-lt9ds",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "13:30",
+      "endTime": "14:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 301",
+      "courseTitle": "Operating System",
+      "venue": "ONLINE",
+      "lecturer": "Dr. Edward Danso, Mr. Benjamin Wiredu",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "e-mvs51abf-lt9ds",
+        "level": 300,
+        "day": "TUE",
+        "start": "13:30",
+        "hours": 1,
+        "course": "DCIT 301",
+        "title": "Operating System",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "ED",
+            "fullName": "Dr. Edward Danso"
+          },
+          {
+            "initials": "BW",
+            "fullName": "Mr. Benjamin Wiredu"
+          }
+        ],
+        "venue": "ONLINE",
+        "note": ""
+      }
+    },
+    {
+      "id": "e-mvi1gg5m-ksffa",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "14:30",
+      "endTime": "15:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 317",
+      "courseTitle": "IT Project Management",
+      "venue": "ONLINE",
+      "lecturer": "Nana Assyne Mieza",
+      "status": "Core (IT), Elective (CS)",
+      "raw": {
+        "id": "e-mvi1gg5m-ksffa",
+        "level": 300,
+        "day": "TUE",
+        "start": "14:30",
+        "hours": 1,
+        "course": "DCIT 317",
+        "title": "IT Project Management",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "NAM",
+            "fullName": "Nana Assyne Mieza"
+          }
+        ],
+        "venue": "ONLINE",
+        "note": ""
+      }
+    },
+    {
+      "id": "seed-014",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "15:30",
+      "endTime": "16:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 313",
+      "courseTitle": "Introduction to AI",
+      "venue": "N1",
+      "lecturer": "Prof. Kofi Sarpong Adu-Manu",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-014",
+        "level": 300,
+        "day": "TUE",
+        "start": "15:30",
+        "hours": 1,
+        "course": "DCIT 313",
+        "title": "Introduction to AI",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "KSA",
+            "fullName": "Prof. Kofi Sarpong Adu-Manu"
+          }
+        ],
+        "venue": "N1",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "e-mvuoh366-zwm8h",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "16:30",
+      "endTime": "17:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 313",
+      "courseTitle": "Introduction to AI",
+      "venue": "N1",
+      "lecturer": "Prof. Winfred Yaokumah",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "e-mvuoh366-zwm8h",
+        "level": 300,
+        "day": "TUE",
+        "start": "16:30",
+        "hours": 1,
+        "course": "DCIT 313",
+        "title": "Introduction to AI",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "WY",
+            "fullName": "Prof. Winfred Yaokumah"
+          }
+        ],
+        "venue": "N1",
+        "note": "",
+        "source": "available"
+      }
+    },
+    {
+      "id": "seed-030-1830",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "18:30",
+      "endTime": "19:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 321",
+      "courseTitle": "Software Evolution",
+      "venue": "MATH19",
+      "lecturer": "Prof. Solomon Mensah",
+      "status": "Elective (IT)",
+      "raw": {
+        "id": "seed-030-1830",
+        "level": 300,
+        "day": "TUE",
+        "start": "18:30",
+        "hours": 1,
+        "course": "DCIT 321",
+        "title": "Software Evolution",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "SM",
+            "fullName": "Prof. Solomon Mensah"
+          }
+        ],
+        "venue": "MATH19",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-025-1730",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "08:30",
+      "endTime": "09:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 323",
+      "courseTitle": "Multimedia and Web Design",
+      "venue": "MATH19",
+      "lecturer": "Dr. Michael Soli",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-025-1730",
+        "level": 300,
+        "day": "WED",
+        "start": "08:30",
+        "hours": 1,
+        "course": "DCIT 323",
+        "title": "Multimedia and Web Design",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "MS",
+            "fullName": "Dr. Michael Soli"
+          }
+        ],
+        "venue": "MATH19",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-018",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "09:30",
+      "endTime": "11:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 313",
+      "courseTitle": "Introduction to AI",
+      "venue": "KAB",
+      "lecturer": "Prof. Kofi Sarpong Adu-Manu",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-018",
+        "level": 300,
+        "day": "WED",
+        "start": "09:30",
+        "hours": 2,
+        "course": "DCIT 313",
+        "title": "Introduction to AI",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "KSA",
+            "fullName": "Prof. Kofi Sarpong Adu-Manu"
+          }
+        ],
+        "venue": "KAB",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-019",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "15:30",
+      "endTime": "17:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 313",
+      "courseTitle": "Introduction to AI",
+      "venue": "JQB09",
+      "lecturer": "Prof. Winfred Yaokumah",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-019",
+        "level": 300,
+        "day": "WED",
+        "start": "15:30",
+        "hours": 2,
+        "course": "DCIT 313",
+        "title": "Introduction to AI",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "WY",
+            "fullName": "Prof. Winfred Yaokumah"
+          }
+        ],
+        "venue": "JQB09",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-034",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "15:30",
+      "endTime": "17:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 311",
+      "courseTitle": "Machine Learning",
+      "venue": "MATH05",
+      "lecturer": "Prof. Justice Kwame Appati",
+      "status": "Elective (CS)",
+      "raw": {
+        "id": "seed-034",
+        "level": 300,
+        "day": "WED",
+        "start": "15:30",
+        "hours": 2,
+        "course": "DCIT 311",
+        "title": "Machine Learning",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "JKA",
+            "fullName": "Prof. Justice Kwame Appati"
+          }
+        ],
+        "venue": "MATH05",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-021",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "17:30",
+      "endTime": "19:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 317",
+      "courseTitle": "IT Project Management",
+      "venue": "JQB24",
+      "lecturer": "Nana Assyne Mieza",
+      "status": "Core (IT), Elective (CS)",
+      "raw": {
+        "id": "seed-021",
+        "level": 300,
+        "day": "WED",
+        "start": "17:30",
+        "hours": 2,
+        "course": "DCIT 317",
+        "title": "IT Project Management",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "NAM",
+            "fullName": "Nana Assyne Mieza"
+          }
+        ],
+        "venue": "JQB24",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-022-0730",
+      "day": "THU",
+      "dayIndex": 4,
+      "startTime": "07:30",
+      "endTime": "08:30",
+      "durationHours": 1,
+      "courseCode": "DCIT 303",
+      "courseTitle": "Computer Networks",
+      "venue": "NNB1",
+      "lecturer": "Mr. Julius Ludu",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-022-0730",
+        "level": 300,
+        "day": "THU",
+        "start": "07:30",
+        "hours": 1,
+        "course": "DCIT 303",
+        "title": "Computer Networks",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "JL",
+            "fullName": "Mr. Julius Ludu"
+          }
+        ],
+        "venue": "NNB1",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-023",
+      "day": "THU",
+      "dayIndex": 4,
+      "startTime": "13:30",
+      "endTime": "15:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 321",
+      "courseTitle": "Software Evolution",
+      "venue": "N3",
+      "lecturer": "Prof. Solomon Mensah",
+      "status": "Elective (IT)",
+      "raw": {
+        "id": "seed-023",
+        "level": 300,
+        "day": "THU",
+        "start": "13:30",
+        "hours": 2,
+        "course": "DCIT 321",
+        "title": "Software Evolution",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "SM",
+            "fullName": "Prof. Solomon Mensah"
+          }
+        ],
+        "venue": "N3",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "seed-024",
+      "day": "THU",
+      "dayIndex": 4,
+      "startTime": "15:30",
+      "endTime": "17:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 301",
+      "courseTitle": "Operating System",
+      "venue": "NNB3",
+      "lecturer": "Mr. Benjamin Wiredu",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "seed-024",
+        "level": 300,
+        "day": "THU",
+        "start": "15:30",
+        "hours": 2,
+        "course": "DCIT 301",
+        "title": "Operating System",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "BW",
+            "fullName": "Mr. Benjamin Wiredu"
+          }
+        ],
+        "venue": "NNB3",
+        "note": "",
+        "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "e-mvkqzuag-argke",
+      "day": "FRI",
+      "dayIndex": 5,
+      "startTime": "09:30",
+      "endTime": "11:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 303",
+      "courseTitle": "Computer Networks",
+      "venue": "JQB14",
+      "lecturer": "Mr. Julius Ludu",
+      "status": "Core (CS & IT)",
+      "raw": {
+        "id": "e-mvkqzuag-argke",
+        "level": 300,
+        "day": "FRI",
+        "start": "09:30",
+        "hours": 2,
+        "course": "DCIT 303",
+        "title": "Computer Networks",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "JL",
+            "fullName": "Mr. Julius Ludu"
+          }
+        ],
+        "venue": "JQB14",
+        "note": ""
+      }
+    },
+    {
+      "id": "e-mvkr0poj-9qibt",
+      "day": "FRI",
+      "dayIndex": 5,
+      "startTime": "13:30",
+      "endTime": "15:30",
+      "durationHours": 2,
+      "courseCode": "DCIT 309",
+      "courseTitle": "Embedded Systems and IoT",
+      "venue": "MATH05",
+      "lecturer": "Dr. Prince Ansah Kwabena",
+      "status": "Elective (CS)",
+      "raw": {
+        "id": "e-mvkr0poj-9qibt",
+        "level": 300,
+        "day": "FRI",
+        "start": "13:30",
+        "hours": 2,
+        "course": "DCIT 309",
+        "title": "Embedded Systems and IoT",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "PAK",
+            "fullName": "Dr. Prince Ansah Kwabena"
+          }
+        ],
+        "venue": "MATH05",
+        "note": ""
+      }
+    }
+  ]
+}

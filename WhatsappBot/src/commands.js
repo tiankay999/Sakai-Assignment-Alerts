@@ -30,9 +30,10 @@ import {
 } from './store.js';
 import { knownCourses, scraperStatus } from './sakaiState.js';
 import { isGroupJid, normalizeNumber, senderIdentifiers } from './util.js';
+import { timetableManager } from './timetable.js';
 
 /** Commands anyone may use. Everything else is admin-only. */
-const PUBLIC_COMMANDS = new Set(['ask', 'help', 'deadlines', 'id']);
+const PUBLIC_COMMANDS = new Set(['ask', 'help', 'deadlines', 'id', 'today', 'classes', 'nextclass', 'timetable']);
 
 function parse(text) {
   const prefix = config.commandPrefix;
@@ -48,8 +49,11 @@ function helpText(isAdmin) {
   const lines = [
     `*${config.botName}*`,
     '',
-    `${p}ask <question> — ask the study assistant (you can also @mention or reply to me)`,
+    `${p}today / ${p}classes — today's class schedule & venues (or free day notice)`,
+    `${p}nextclass — upcoming class today`,
+    `${p}timetable [day] — full Level 300 timetable (e.g. ${p}timetable mon)`,
     `${p}deadlines — outstanding assignments and quizzes`,
+    `${p}ask <question> — ask the study assistant (you can also @mention or reply to me)`,
     `${p}help — this message`,
   ];
   if (isAdmin) {
@@ -62,6 +66,7 @@ function helpText(isAdmin) {
       `${p}addgroup <course> <groupId|here> [label] — map a course to a group`,
       `${p}removegroup <course> <groupId|here> — unmap`,
       `${p}broadcast <group|all> <message> — send a message to a group`,
+      `${p}sync_timetable — reload DCS Level 300 timetable live`,
       `${p}ad <group|all> <message> — set the sponsor line appended to digests`,
       `${p}ad clear <group|all> — remove it`,
       `${p}mute <number> / ${p}unmute <number> — block a user from the assistant`,
@@ -178,6 +183,36 @@ export function createCommands({ whatsapp, broadcaster, assistant }) {
 
       case 'deadlines':
         return deadlinesText();
+
+      case 'today':
+      case 'classes':
+        return timetableManager.formatDailySchedule();
+
+      case 'nextclass': {
+        const next = timetableManager.getNextClassToday();
+        if (!next) return 'No more classes scheduled for today!';
+        return [
+          '⏰ *Next Class Today*',
+          `📚 *Course:* ${next.courseCode} - ${next.courseTitle}`,
+          `🏛️ *Venue:* ${next.venue} (${next.status})`,
+          `⏰ *Time:* ${next.startTime} - ${next.endTime}`,
+          `👨‍🏫 *Lecturer:* ${next.lecturer}`,
+        ].join('\n');
+      }
+
+      case 'timetable': {
+        const dayArg = args[0] ? args[0].toUpperCase() : null;
+        return timetableManager.formatFullTimetable(dayArg);
+      }
+
+      case 'sync_timetable': {
+        try {
+          const data = await timetableManager.sync();
+          return `✅ Synced timetable successfully! Loaded ${data.entries.length} Level 300 class sessions (${data.meta.academicYear} - ${data.meta.semester}).`;
+        } catch (err) {
+          return `❌ Timetable sync failed: ${err.message}`;
+        }
+      }
 
       case 'id': {
         const identifiers = senderIdentifiers(msg);

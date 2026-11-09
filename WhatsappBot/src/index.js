@@ -16,6 +16,7 @@ import { createBroadcaster } from './broadcaster.js';
 import { createAssistant } from './assistant.js';
 import { createCommands } from './commands.js';
 import { startOutboxWatcher } from './outbox.js';
+import { timetableManager } from './timetable.js';
 import { botState, isMuted } from './store.js';
 import {
   contextInfoOf,
@@ -147,8 +148,25 @@ async function main() {
 
   await whatsapp.connect();
 
+  // Load or sync timetable on startup
+  if (!timetableManager.getEntries().length) {
+    try {
+      await timetableManager.sync();
+    } catch (e) {
+      logger.warn({ err: e.message }, 'initial timetable sync failed');
+    }
+  }
+
+  // Periodic class reminder loop (checks every 60 seconds)
+  const reminderTimer = setInterval(() => {
+    timetableManager.checkAndDispatchAlerts({ whatsapp, broadcaster }).catch((err) => {
+      logger.error({ err: err.message }, 'error in class reminder tick');
+    });
+  }, 60_000);
+
   const shutdown = (signal) => {
     logger.info({ signal }, 'shutting down');
+    clearInterval(reminderTimer);
     stopWatcher();
     process.exit(0);
   };
