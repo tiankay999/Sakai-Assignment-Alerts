@@ -104,6 +104,35 @@ function mentionsPastQuestions(question) {
   return /past\s*(question|paper|exam)|pasco|p\.?q\.?s?\b/i.test(question);
 }
 
+export function detectProviderAndKey() {
+  const groqKey = String(process.env.GROQ_API_KEY || '').trim();
+  const geminiKey = String(process.env.GEMINI_API_KEY || config.gemini.apiKey || '').trim();
+
+  // If either key starts with 'gsk_', it is a Groq key (console.groq.com)
+  if (groqKey.startsWith('gsk_')) {
+    return { provider: 'groq', apiKey: groqKey, model: process.env.LLM_MODEL || 'llama-3.1-8b-instant' };
+  }
+  if (geminiKey.startsWith('gsk_')) {
+    return { provider: 'groq', apiKey: geminiKey, model: process.env.LLM_MODEL || 'llama-3.1-8b-instant' };
+  }
+
+  // If either key starts with 'AIza', it is a Google Gemini key
+  if (geminiKey.startsWith('AIza')) {
+    return { provider: 'gemini', apiKey: geminiKey, model: process.env.GEMINI_MODEL || 'gemini-1.5-flash' };
+  }
+  if (groqKey.startsWith('AIza')) {
+    return { provider: 'gemini', apiKey: groqKey, model: process.env.GEMINI_MODEL || 'gemini-1.5-flash' };
+  }
+
+  if (groqKey) {
+    return { provider: 'groq', apiKey: groqKey, model: process.env.LLM_MODEL || 'llama-3.1-8b-instant' };
+  }
+  if (geminiKey) {
+    return { provider: 'gemini', apiKey: geminiKey, model: process.env.GEMINI_MODEL || 'gemini-1.5-flash' };
+  }
+  return { provider: null, apiKey: null, model: null };
+}
+
 export function createAssistant() {
   // chatJid -> { turns: [{role, text}], updatedAt }. Memory only, never on disk:
   // group message bodies are not something this service should persist.
@@ -130,15 +159,13 @@ export function createAssistant() {
     histories.delete(chatJid);
   }
 
-  async function callGroq(questionText, chatHistory) {
-    const apiKey = process.env.GROQ_API_KEY || config.gemini.apiKey;
-    const model = process.env.LLM_MODEL || (config.gemini.model.includes('llama') ? config.gemini.model : 'llama-3.3-70b-versatile');
-
+  async function callGroq(questionText, chatHistory, apiKey, model) {
+    const targetModel = model || 'llama-3.1-8b-instant';
     const messages = [
       { role: 'system', content: systemPrompt() },
       ...chatHistory.map((turn) => ({
         role: turn.role === 'model' ? 'assistant' : 'user',
-        content: turn.parts ? turn.parts[0].text : turn.text,
+        content: turn.parts ? turn.parts[0].text : (turn.text ?? ''),
       })),
       { role: 'user', content: questionText },
     ];
@@ -153,7 +180,7 @@ export function createAssistant() {
           authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model,
+          model: targetModel,
           messages,
           temperature: 0.4,
           max_tokens: 700,
@@ -162,9 +189,13 @@ export function createAssistant() {
       });
 
       if (!resp.ok) {
+        if (resp.status === 404 && targetModel !== 'llama-3.1-8b-instant') {
+          logger.warn({ model: targetModel }, 'Groq model not accessible, falling back to llama-3.1-8b-instant');
+          return callGroq(questionText, chatHistory, apiKey, 'llama-3.1-8b-instant');
+        }
         const errJson = await resp.json().catch(() => ({}));
         const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
-        logger.error({ status: resp.status, model, errMsg }, 'groq request failed');
+        logger.error({ status: resp.status, model: targetModel, errMsg }, 'groq request failed');
         return { ok: false, reason: resp.status === 429 ? 'quota' : 'api', detail: `Groq error (${resp.status}): ${errMsg}` };
       }
 
@@ -183,20 +214,17 @@ export function createAssistant() {
     } catch (err) {
       const reason = err.name === 'AbortError' ? 'timeout' : 'network';
       logger.error({ err: err.message, reason }, 'groq call errored');
-      return { ok: false, reason };
+      return { ok: false, reason, detail: `Groq error: ${err.message}` };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function callGemini(contents) {
-    const { model, apiKey } = config.gemini;
+  async function callGemini(contents, apiKey, model) {
     const generationConfig = {
       temperature: 0.4,
       maxOutputTokens: 700,
     };
-    // 2.5-series models bill "thinking" tokens. With a hard monthly cap in
-    // play, default them off; raise GEMINI_THINKING_BUDGET if you want them.
     if (model.includes('2.5')) {
       const budget = Number.parseInt(process.env.GEMINI_THINKING_BUDGET ?? '0', 10);
       generationConfig.thinkingConfig = { thinkingBudget: Number.isFinite(budget) ? budget : 0 };
@@ -247,28 +275,19 @@ export function createAssistant() {
     } catch (err) {
       const reason = err.name === 'AbortError' ? 'timeout' : 'network';
       logger.error({ err: err.message, reason }, 'gemini call errored');
-      return { ok: false, reason };
+      return { ok: false, reason, detail: `Gemini error: ${err.message}` };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  /**
-   * Answer one question.
-   *
-   * Returns { ok, text } on success, or { ok: false, notice } with a short
-   * message to post, or { ok: false, silent: true } when the bot should say
-   * nothing at all.
-   */
   async function ask({ chatJid, userKey, question, isAdmin = false }) {
-    const hasGroq = Boolean(process.env.GROQ_API_KEY);
-    const hasGemini = Boolean(config.gemini.apiKey);
-
-    if (!hasGroq && !hasGemini) {
+    const active = detectProviderAndKey();
+    if (!active.apiKey) {
       return {
         ok: false,
         notice: isAdmin
-          ? '⚠️ No AI API key found. Please set GROQ_API_KEY or GEMINI_API_KEY in Coolify.'
+          ? '⚠️ No AI API key found. Please add GROQ_API_KEY (from console.groq.com) or GEMINI_API_KEY in Coolify.'
           : 'The study assistant is not configured yet.',
       };
     }
@@ -312,10 +331,9 @@ export function createAssistant() {
       },
     ];
 
-    const isGroq = Boolean(process.env.GROQ_API_KEY) || config.gemini.model.toLowerCase().includes('llama');
-    const result = isGroq
-      ? await callGroq(`${groundingBlock()}\n\nQuestion from the group:\n${trimmedQuestion}`, history(chatJid))
-      : await callGemini(contents);
+    const result = active.provider === 'groq'
+      ? await callGroq(`${groundingBlock()}\n\nQuestion from the group:\n${trimmedQuestion}`, history(chatJid), active.apiKey, active.model)
+      : await callGemini(contents, active.apiKey, active.model);
     if (!result.ok) {
       if (isAdmin && result.detail) {
         return { ok: false, notice: `⚠️ ${result.detail}` };
@@ -343,7 +361,11 @@ export function createAssistant() {
   }
 
   function usageSummary() {
+    const active = detectProviderAndKey();
     return {
+      provider: active.provider ? active.provider.toUpperCase() : 'None',
+      model: active.model ?? 'none',
+      keyConfigured: Boolean(active.apiKey),
       month: usage.data.month,
       requests: usage.data.requests,
       promptTokens: usage.data.promptTokens,
