@@ -111,6 +111,7 @@ async function main() {
         question: stripMentions(text, botNumbers),
         identifiers,
         muted,
+        isAdmin,
       });
     },
   });
@@ -119,7 +120,7 @@ async function main() {
   const commands = createCommands({ whatsapp, broadcaster, assistant });
 
   /** Shared assistant path for /ask, @mentions and replies. */
-  async function answer({ chatJid, msg, question, identifiers, muted }) {
+  async function answer({ chatJid, msg, question, identifiers, muted, isAdmin = false }) {
     // Muted users get silence, not an explanation.
     if (muted) {
       logger.debug({ chatJid }, 'muted user triggered the assistant, ignoring');
@@ -129,7 +130,7 @@ async function main() {
     const userKey = identifiers[0] ?? senderJid(msg) ?? 'unknown';
     await whatsapp.showTyping(chatJid);
 
-    const result = await assistant.ask({ chatJid, userKey, question });
+    const result = await assistant.ask({ chatJid, userKey, question, isAdmin });
 
     if (result.ok) {
       await whatsapp.sendNow(chatJid, result.text, { quoted: msg });

@@ -162,8 +162,10 @@ export function createAssistant() {
       });
 
       if (!resp.ok) {
-        logger.error({ status: resp.status, model }, 'groq request failed');
-        return { ok: false, reason: resp.status === 429 ? 'quota' : 'api' };
+        const errJson = await resp.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
+        logger.error({ status: resp.status, model, errMsg }, 'groq request failed');
+        return { ok: false, reason: resp.status === 429 ? 'quota' : 'api', detail: `Groq error (${resp.status}): ${errMsg}` };
       }
 
       const data = await resp.json();
@@ -218,9 +220,10 @@ export function createAssistant() {
       });
 
       if (!resp.ok) {
-        // Body may carry the key back in an error echo; log status only.
-        logger.error({ status: resp.status, model }, 'gemini request failed');
-        return { ok: false, reason: resp.status === 429 ? 'quota' : 'api' };
+        const errJson = await resp.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
+        logger.error({ status: resp.status, model, errMsg }, 'gemini request failed');
+        return { ok: false, reason: resp.status === 429 ? 'quota' : 'api', detail: `Gemini error (${resp.status}): ${errMsg}` };
       }
 
       const data = await resp.json();
@@ -257,9 +260,17 @@ export function createAssistant() {
    * message to post, or { ok: false, silent: true } when the bot should say
    * nothing at all.
    */
-  async function ask({ chatJid, userKey, question }) {
-    if (!config.gemini.apiKey) {
-      return { ok: false, silent: true };
+  async function ask({ chatJid, userKey, question, isAdmin = false }) {
+    const hasGroq = Boolean(process.env.GROQ_API_KEY);
+    const hasGemini = Boolean(config.gemini.apiKey);
+
+    if (!hasGroq && !hasGemini) {
+      return {
+        ok: false,
+        notice: isAdmin
+          ? '⚠️ No AI API key found. Please set GROQ_API_KEY or GEMINI_API_KEY in Coolify.'
+          : 'The study assistant is not configured yet.',
+      };
     }
 
     const trimmedQuestion = truncate(String(question ?? '').trim(), MAX_QUESTION_CHARS);
@@ -277,16 +288,18 @@ export function createAssistant() {
       };
     }
 
-    const rate = checkUserRate(userKey);
-    if (!rate.allowed) {
-      const minutes = Math.max(1, Math.ceil(rate.retryAfterMs / 60000));
-      return {
-        ok: false,
-        notice: `You have used your ${config.gemini.rateLimit} questions for now. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`,
-      };
+    // Admins bypass the per-user rate limit
+    if (!isAdmin) {
+      const rate = checkUserRate(userKey);
+      if (!rate.allowed) {
+        const minutes = Math.max(1, Math.ceil(rate.retryAfterMs / 60000));
+        return {
+          ok: false,
+          notice: `You have used your ${config.gemini.rateLimit} questions for now. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+        };
+      }
+      recordUserRequest(userKey);
     }
-
-    recordUserRequest(userKey);
 
     const contents = [
       ...history(chatJid).map((turn) => ({
@@ -304,6 +317,9 @@ export function createAssistant() {
       ? await callGroq(`${groundingBlock()}\n\nQuestion from the group:\n${trimmedQuestion}`, history(chatJid))
       : await callGemini(contents);
     if (!result.ok) {
+      if (isAdmin && result.detail) {
+        return { ok: false, notice: `⚠️ ${result.detail}` };
+      }
       const notices = {
         quota: 'The AI service is rate-limiting me right now. Try again in a few minutes.',
         timeout: 'That took too long to answer. Try asking again, a bit shorter.',
