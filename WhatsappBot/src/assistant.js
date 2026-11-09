@@ -189,10 +189,6 @@ export function createAssistant() {
       });
 
       if (!resp.ok) {
-        if (resp.status === 404 && targetModel !== 'llama-3.1-8b-instant') {
-          logger.warn({ model: targetModel }, 'Groq model not accessible, falling back to llama-3.1-8b-instant');
-          return callGroq(questionText, chatHistory, apiKey, 'llama-3.1-8b-instant');
-        }
         const errJson = await resp.json().catch(() => ({}));
         const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
         logger.error({ status: resp.status, model: targetModel, errMsg }, 'groq request failed');
