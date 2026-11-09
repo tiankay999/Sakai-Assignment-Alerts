@@ -67,7 +67,7 @@ export const config = {
 
   gemini: {
     apiKey: str('GEMINI_API_KEY'),
-    model: str('GEMINI_MODEL', 'gemini-2.5-flash'),
+    model: str('GEMINI_MODEL', 'gemini-2.0-flash'),
     rateLimit: int('LLM_RATE_LIMIT', 5),
     rateWindowMs: int('LLM_RATE_WINDOW_MINUTES', 60) * 60 * 1000,
     monthlyTokenCap: int('LLM_MONTHLY_CAP', 1000000),
