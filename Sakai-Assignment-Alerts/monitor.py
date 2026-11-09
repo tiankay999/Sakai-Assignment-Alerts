@@ -39,7 +39,7 @@ ACTIVE_TERM = os.getenv("ACTIVE_TERM")
 
 SAKAI_BASE = "https://sakai.ug.edu.gh"
 LOGIN_URL = f"{SAKAI_BASE}/portal/xlogin"
-SITE_LIST_URL = f"{SAKAI_BASE}/portal/sites"
+SITE_LIST_URL = f"{SAKAI_BASE}/direct/site.json"
 
 # Directory where persistent state is stored. Override with DATA_DIR so the
 # state files can live on a mounted volume in Docker/Coolify (defaults to CWD).
@@ -332,54 +332,66 @@ def get_enrolled_sites(session: requests.Session) -> list[dict]:
     Return a list of sites the user is enrolled in.
     Each entry is {'id': str, 'title': str, 'url': str}.
 
-    Sakai exposes enrolled sites in the portal's left-hand sidebar as
-    <a> links under the #sitesNav element (or similar), and also via the
-    /portal/sites JSON endpoint.
+    Queries Sakai's REST EntityBroker endpoints first (/direct/site.json),
+    falling back to scraping the portal navigation.
     """
     print("[*] Fetching enrolled course list ...")
     time.sleep(REQUEST_DELAY)
 
     sites = []
 
-    # Try the JSON site list endpoint first (more reliable)
-    try:
-        resp = session.get(SITE_LIST_URL, timeout=10, headers={"Accept": "application/json"})
-        if resp.status_code == 200 and resp.headers.get("Content-Type", "").startswith("application/json"):
-            data = resp.json()
-            # Sakai returns {"site_collection": [...]} or a list directly
-            site_list = data.get("site_collection", data) if isinstance(data, dict) else data
-            for site in site_list:
-                site_id = site.get("id") or site.get("siteId", "")
-                title = site.get("title", "Unknown Course")
-                if ACTIVE_TERM and ACTIVE_TERM not in title:
-                    continue
-                url = f"{SAKAI_BASE}/portal/site/{site_id}"
-                sites.append({"id": site_id, "title": title, "url": url})
-            if sites:
-                print(f"[+] Found {len(sites)} enrolled sites via JSON endpoint.")
-                return sites
-    except (requests.RequestException, ValueError):
-        pass  # Fall through to HTML scraping
+    # Try Sakai REST API endpoints for user sites
+    endpoints = [
+        f"{SAKAI_BASE}/direct/site.json",
+        f"{SAKAI_BASE}/direct/site.json?_limit=100",
+        f"{SAKAI_BASE}/direct/membership/my.json",
+    ]
 
-    # Fallback: scrape the portal HTML for site links
+    for ep in endpoints:
+        try:
+            resp = session.get(ep, timeout=15, headers={"Accept": "application/json"})
+            if resp.status_code == 200:
+                data = resp.json()
+                site_list = data.get("site_collection", data) if isinstance(data, dict) else data
+                if isinstance(site_list, list) and site_list:
+                    for site in site_list:
+                        site_id = site.get("id") or site.get("siteId", "")
+                        title = site.get("title", "Unknown Course")
+                        # Skip private user workspaces (~10xxxxxx) or Home
+                        if not site_id or site_id.startswith("~") or title.lower() in ("home", "my workspace"):
+                            continue
+                        if ACTIVE_TERM and ACTIVE_TERM not in title:
+                            continue
+                        if not any(s["id"] == site_id for s in sites):
+                            sites.append({
+                                "id": site_id,
+                                "title": title,
+                                "url": f"{SAKAI_BASE}/portal/site/{site_id}",
+                            })
+                    if sites:
+                        print(f"[+] Found {len(sites)} enrolled sites via REST API ({ep}).")
+                        return sites
+        except Exception:
+            pass
+
+    # Fallback: scrape the portal HTML for site links (e.g. top navigation bar)
     try:
-        resp = session.get(f"{SAKAI_BASE}/portal", timeout=10)
+        resp = session.get(f"{SAKAI_BASE}/portal", timeout=15)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Sakai renders site tabs/links in elements with class 'fav-sites-entry'
-        # or inside a nav with id 'sitesNav'. We cast a wide net.
         for link in soup.select("a[href*='/portal/site/']"):
             href = link.get("href", "")
-            # Extract the site ID from the URL path segment after /portal/site/
             parts = href.split("/portal/site/")
             if len(parts) < 2:
                 continue
             site_id = parts[1].split("/")[0].split("?")[0]
             title = link.get_text(strip=True) or site_id
+            if not site_id or site_id.startswith("~") or title.lower() in ("home", "my workspace"):
+                continue
             if ACTIVE_TERM and ACTIVE_TERM not in title:
                 continue
-            if site_id and not any(s["id"] == site_id for s in sites):
+            if not any(s["id"] == site_id for s in sites):
                 sites.append({
                     "id": site_id,
                     "title": title,
