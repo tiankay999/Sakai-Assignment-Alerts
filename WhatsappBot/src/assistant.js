@@ -180,9 +180,18 @@ export function createAssistant() {
 
   async function callGroq(questionText, chatHistory, apiKey, model, images = []) {
     const hasImages = Array.isArray(images) && images.length > 0;
-    let targetModel = hasImages
-      ? (process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct')
-      : (model || 'llama-3.1-8b-instant');
+    const isVisionCapable = (m) => /qwen3\.8|muse-spark|llama-4-scout|llama-4-maverick|vision|llava|-vl\b/i.test(String(m || ''));
+
+    let targetModel = model || 'llama-3.1-8b-instant';
+    if (hasImages) {
+      if (process.env.GROQ_VISION_MODEL) {
+        targetModel = process.env.GROQ_VISION_MODEL.trim();
+      } else if (isVisionCapable(model)) {
+        targetModel = model;
+      } else {
+        targetModel = 'qwen/qwen3.8-27b';
+      }
+    }
 
     async function sendGroqRequest(modelName) {
       const messages = [
@@ -221,7 +230,7 @@ export function createAssistant() {
             model: modelName,
             messages,
             temperature: 0.7,
-            max_tokens: 800,
+            max_tokens: 1200,
           }),
           signal: controller.signal,
         });
@@ -235,7 +244,8 @@ export function createAssistant() {
         }
 
         const data = await resp.json();
-        const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+        let text = data.choices?.[0]?.message?.content?.trim() ?? '';
+        text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
         if (!text) return { ok: false, status: 200, errMsg: 'empty', reason: 'empty' };
 
         const usageMeta = data.usage ?? {};
@@ -266,14 +276,21 @@ export function createAssistant() {
         if (modelsRes.ok) {
           const modelsData = await modelsRes.json();
           const availableIds = (modelsData.data || []).map((m) => m.id);
-          const candidate = availableIds.find(
-            (id) =>
-              id !== targetModel &&
-              (/llama-4-scout|llama-4-maverick|llama-3\.2-.*vision|vision|llava/i.test(id)),
-          );
-          if (candidate) {
-            logger.info({ oldModel: targetModel, visionModel: candidate }, 'retrying image request with discovered Groq vision model');
-            result = await sendGroqRequest(candidate);
+          const visionCandidates = availableIds.filter((id) => id !== targetModel && isVisionCapable(id));
+
+          // Also include user's configured model if not yet attempted
+          if (model && model !== targetModel && availableIds.includes(model) && !visionCandidates.includes(model)) {
+            visionCandidates.push(model);
+          }
+
+          if (visionCandidates.length > 0) {
+            for (const candidate of visionCandidates) {
+              logger.info({ oldModel: targetModel, visionModel: candidate }, 'retrying image request with discovered Groq model');
+              result = await sendGroqRequest(candidate);
+              if (result.ok) break;
+            }
+          } else {
+            logger.warn({ availableIds }, 'no vision-capable model found in Groq account catalog');
           }
         }
       } catch (lookupErr) {
