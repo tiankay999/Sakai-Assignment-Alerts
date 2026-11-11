@@ -57,31 +57,101 @@ export function senderJid(msg) {
   return key.participant || key.participantAlt || key.remoteJid || '';
 }
 
-/** Extract plain text from the handful of message shapes we care about. */
+/** Recursively unwrap common Baileys message containers (ephemeral, view-once, document, etc.) */
+export function unwrapMessage(m) {
+  let curr = m;
+  let iterations = 0;
+  while (curr && typeof curr === 'object' && iterations < 8) {
+    iterations += 1;
+    if (curr.ephemeralMessage?.message) {
+      curr = curr.ephemeralMessage.message;
+      continue;
+    }
+    if (curr.viewOnceMessage?.message) {
+      curr = curr.viewOnceMessage.message;
+      continue;
+    }
+    if (curr.viewOnceMessageV2?.message) {
+      curr = curr.viewOnceMessageV2.message;
+      continue;
+    }
+    if (curr.viewOnceMessageV2Extension?.message) {
+      curr = curr.viewOnceMessageV2Extension.message;
+      continue;
+    }
+    if (curr.documentWithCaptionMessage?.message) {
+      curr = curr.documentWithCaptionMessage.message;
+      continue;
+    }
+    if (curr.editedMessage?.message?.protocolMessage?.editedMessage) {
+      curr = curr.editedMessage.message.protocolMessage.editedMessage;
+      continue;
+    }
+    break;
+  }
+  return curr || {};
+}
+
+/** Extract plain text from any supported message shape (raw message object or WAMessage). */
 export function messageText(msg) {
-  const m = msg?.message;
-  if (!m) return '';
+  const raw = msg?.message ? msg.message : msg;
+  const m = unwrapMessage(raw);
+  if (!m || typeof m !== 'object') return '';
+
   const text =
     m.conversation ||
     m.extendedTextMessage?.text ||
     m.imageMessage?.caption ||
     m.videoMessage?.caption ||
-    m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
-    m.ephemeralMessage?.message?.conversation ||
-    m.ephemeralMessage?.message?.extendedTextMessage?.text ||
+    m.documentMessage?.caption ||
     '';
   return String(text).trim();
 }
 
+/** Extract contextInfo from any supported message shape. */
 export function contextInfoOf(msg) {
-  const m = msg?.message;
+  const raw = msg?.message ? msg.message : msg;
+  const m = unwrapMessage(raw);
+  if (!m || typeof m !== 'object') return null;
+
   return (
-    m?.extendedTextMessage?.contextInfo ||
-    m?.imageMessage?.contextInfo ||
-    m?.videoMessage?.contextInfo ||
-    m?.ephemeralMessage?.message?.extendedTextMessage?.contextInfo ||
+    m.extendedTextMessage?.contextInfo ||
+    m.imageMessage?.contextInfo ||
+    m.videoMessage?.contextInfo ||
+    m.documentMessage?.contextInfo ||
+    m.audioMessage?.contextInfo ||
+    m.stickerMessage?.contextInfo ||
     null
   );
+}
+
+/** Check if a message (or its unwrap) contains an image. */
+export function hasImageInMessage(msg) {
+  const raw = msg?.message ? msg.message : msg;
+  const m = unwrapMessage(raw);
+  return Boolean(m?.imageMessage);
+}
+
+/**
+ * Extract details about the quoted message (if this message is a reply to another).
+ * Returns { text, hasImage, participant, stanzaId, quotedMessage } or null if not a reply.
+ */
+export function quotedInfoOf(msg) {
+  const ctx = contextInfoOf(msg);
+  if (!ctx?.quotedMessage) return null;
+
+  const unwrappedQuoted = unwrapMessage(ctx.quotedMessage);
+  const text = messageText({ message: unwrappedQuoted });
+  const hasImage = Boolean(unwrappedQuoted?.imageMessage);
+
+  return {
+    text,
+    hasImage,
+    participant: ctx.participant || '',
+    stanzaId: ctx.stanzaId || '',
+    quotedMessage: ctx.quotedMessage,
+    unwrappedQuoted,
+  };
 }
 
 export function truncate(text, max) {

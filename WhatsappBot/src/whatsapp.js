@@ -16,7 +16,7 @@ import * as baileys from '@whiskeysockets/baileys';
 
 import { config } from './config.js';
 import { logger, baileysLogger } from './logger.js';
-import { jidDigits, randomBetween, sleep } from './util.js';
+import { jidDigits, quotedInfoOf, randomBetween, sleep, unwrapMessage } from './util.js';
 
 // Baileys ships as CJS. Verified against 6.7.24: the socket factory is the
 // default export and everything else is a named export. The fallback keeps
@@ -28,6 +28,7 @@ const {
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   Browsers,
+  downloadMediaMessage,
 } = baileys;
 
 const MAX_BACKOFF_MS = 60_000;
@@ -304,6 +305,67 @@ export function createWhatsApp({ onMessage }) {
     }
   }
 
+  /**
+   * Download any image attached directly to `msg` or inside its quoted reply.
+   * Returns an array of `{ mimeType, base64 }` objects.
+   */
+  async function extractImages(msg) {
+    const MAX_BYTES = 6 * 1024 * 1024;
+    const images = [];
+
+    async function downloadFrom(targetMsg, mimetype) {
+      try {
+        const buf = await downloadMediaMessage(
+          targetMsg,
+          'buffer',
+          {},
+          {
+            logger: baileysLogger,
+            reuploadRequest: sock?.updateMediaMessage,
+          },
+        );
+        if (!Buffer.isBuffer(buf) || buf.length === 0) return null;
+        if (buf.length > MAX_BYTES) {
+          logger.warn({ bytes: buf.length }, 'skipping oversized image (>6MB)');
+          return null;
+        }
+        return {
+          mimeType: mimetype || 'image/jpeg',
+          base64: buf.toString('base64'),
+        };
+      } catch (err) {
+        logger.warn({ err: err.message }, 'failed to download image from WhatsApp message');
+        return null;
+      }
+    }
+
+    // 1. Check quoted message first (if the user replied to an image)
+    const quoted = quotedInfoOf(msg);
+    if (quoted?.hasImage) {
+      const quotedImgMsg = quoted.unwrappedQuoted.imageMessage;
+      const syntheticMsg = {
+        key: {
+          remoteJid: msg.key?.remoteJid,
+          id: quoted.stanzaId,
+          participant: quoted.participant,
+        },
+        message: quoted.unwrappedQuoted,
+      };
+      const downloaded = await downloadFrom(syntheticMsg, quotedImgMsg?.mimetype);
+      if (downloaded) images.push(downloaded);
+    }
+
+    // 2. Check the current message itself
+    const unwrapped = unwrapMessage(msg?.message);
+    if (unwrapped?.imageMessage) {
+      const currentTarget = { ...msg, message: unwrapped };
+      const downloaded = await downloadFrom(currentTarget, unwrapped.imageMessage.mimetype);
+      if (downloaded) images.push(downloaded);
+    }
+
+    return images;
+  }
+
   function status() {
     return {
       connected,
@@ -324,6 +386,7 @@ export function createWhatsApp({ onMessage }) {
     enqueue,
     queueLength,
     fetchGroups,
+    extractImages,
     status,
     botNumbers,
     botJids,

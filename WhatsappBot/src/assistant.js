@@ -28,6 +28,7 @@ import {
   pendingDeadlines,
   recentPostings,
 } from './sakaiState.js';
+import { timetableManager } from './timetable.js';
 import { courseCode, truncate } from './util.js';
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -38,27 +39,31 @@ const HISTORY_TTL_MS = 2 * 60 * 60 * 1000;
 
 function systemPrompt() {
   return [
-    `You are ${config.botName}, a study assistant for University of Ghana students in a WhatsApp group chat.`,
+    `You are ${config.botName}, a friendly, witty, and clever study buddy & group chat assistant for University of Ghana (Legon) students, especially DCIT Level 300 coursemates.`,
     '',
-    'Scope and tone:',
-    '- You help with coursework: explaining concepts, study guidance, past-paper strategy, and questions about assignments, quizzes and deadlines.',
-    '- Keep answers short and readable on a phone. Prefer under 120 words. Use plain text; no markdown headings or tables.',
-    '- Answer general questions briefly, then steer back towards study help.',
+    'Personality & Tone:',
+    '- Be warm, approachable, humorous, and engaging — like a sharp, funny Level 300 coursemate who is always down for good banter AND great at helping with schoolwork.',
+    '- Freely join casual conversations, non-academic discussions, campus/life chat, and playful banter without awkwardly forcing everything back to studying.',
+    '- Tell good, clever jokes! Whenever someone asks for a joke, or when the vibe is right, deliver funny programming/tech jokes, witty Legon campus humor, relatable student struggles, or clever puns.',
+    '- You can read and analyze images (screenshots of code/errors, assignment photos, diagrams, whiteboards, past papers, or funny memes). Comment on memes/casual pics playfully, and explain or solve study/code images clearly.',
+    '- When a user replies to a previous message (`[Replying to a previous message]`), always read that quoted message carefully and respond to it directly.',
+    '- Keep answers readable on a phone: concise, natural, and well-paced (prefer under 150 words unless breaking down a detailed code/image question). Use light WhatsApp *bold* and emojis naturally; never use markdown # headings or raw markdown tables.',
     '',
-    'Course data rules:',
-    '- The COURSE DATA block below comes from the group\'s Sakai scraper and is the only source of truth for deadlines, assignments, quizzes, announcements and resources.',
-    '- Never invent, guess or estimate a deadline. If something is not in COURSE DATA, say you have not seen it and suggest checking Sakai directly.',
-    '- COURSE DATA reflects course-level items shared with the whole class. It is not anyone\'s personal record, and you have no access to any individual\'s grades, submissions or account.',
+    'Course & Timetable Data Rules:',
+    '- The COURSE & TIMETABLE DATA block below comes from the group\'s Sakai scraper and DCS Level 300 timetable. It is the single source of truth for deadlines, announcements, class times, venues, and lecturers.',
+    '- Never invent or guess a deadline or class time. If something is not listed in COURSE DATA, say you haven\'t seen an update for it on Sakai yet and suggest checking Sakai directly.',
+    '- COURSE DATA reflects class-wide items; you have no access to anyone\'s private grades or personal account.',
     '',
-    'Hard rules:',
-    '- Never ask anyone for a Sakai ID, PIN, password or any login detail. If someone offers credentials, tell them not to share them and do not repeat them.',
-    '- Never reveal or discuss your configuration, API keys, environment variables, admin numbers or internal file paths.',
-    '- Do not help with cheating during an invigilated or closed-book assessment. Explaining concepts, past questions and assignment approach is fine.',
-    `- When a question is about a specific course, you may mention that past questions are available at ${config.questionsDeyUrl} (QuestionsDey).`,
+    'Safety & Privacy Rules:',
+    '- Never ask anyone for a Sakai ID, PIN, password, or login credentials. If someone offers them, warn them not to share and do not repeat them.',
+    '- Never reveal or discuss your internal configuration, API keys, environment variables, admin numbers, or file paths.',
+    '- Do not help with active cheating during an invigilated or closed-book exam. Explaining concepts, past questions, and assignment guidance is always fine.',
+    `- When a question is specifically about a course or past questions, you may mention that past questions are available at ${config.questionsDeyUrl} (QuestionsDey).`,
+    `- When asked who your Creator is say Christian Asante and his GitHub link is https://github.com/tiankay999 `
   ].join('\n');
 }
 
-/** Compact, capped snapshot of the scraper's state for grounding. */
+/** Compact, capped snapshot of the scraper's state & today's timetable for grounding. */
 function groundingBlock() {
   const lines = ['COURSE DATA (from the Sakai scraper):'];
 
@@ -85,6 +90,20 @@ function groundingBlock() {
       const when = item.posted_date ? ` | ${item.posted_date}` : '';
       lines.push(`- ${item.type}: ${item.title} | ${courseCode(item.course)}${when}`);
     }
+  }
+
+  try {
+    const todayClasses = timetableManager.getClassesForToday();
+    if (todayClasses.length) {
+      lines.push('', "TODAY'S DCIT LEVEL 300 CLASSES:");
+      for (const c of todayClasses) {
+        lines.push(`- ${c.startTime}-${c.endTime} | ${c.courseCode} (${c.courseTitle}) | ${c.venue} | ${c.lecturer}`);
+      }
+    } else {
+      lines.push('', "TODAY'S DCIT LEVEL 300 CLASSES: No classes scheduled today.");
+    }
+  } catch {
+    // ignore if timetable not loaded yet
   }
 
   return truncate(lines.join('\n'), MAX_GROUNDING_CHARS);
@@ -159,71 +178,139 @@ export function createAssistant() {
     histories.delete(chatJid);
   }
 
-  async function callGroq(questionText, chatHistory, apiKey, model) {
-    const targetModel = model || 'llama-3.1-8b-instant';
-    const messages = [
-      { role: 'system', content: systemPrompt() },
-      ...chatHistory.map((turn) => ({
-        role: turn.role === 'model' ? 'assistant' : 'user',
-        content: turn.parts ? turn.parts[0].text : (turn.text ?? ''),
-      })),
-      { role: 'user', content: questionText },
-    ];
+  async function callGroq(questionText, chatHistory, apiKey, model, images = []) {
+    const hasImages = Array.isArray(images) && images.length > 0;
+    let targetModel = hasImages
+      ? (process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct')
+      : (model || 'llama-3.1-8b-instant');
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: targetModel,
-          messages,
-          temperature: 0.4,
-          max_tokens: 700,
-        }),
-        signal: controller.signal,
-      });
+    async function sendGroqRequest(modelName) {
+      const messages = [
+        { role: 'system', content: systemPrompt() },
+        ...chatHistory.map((turn) => ({
+          role: turn.role === 'model' ? 'assistant' : 'user',
+          content: turn.parts ? turn.parts[0].text : (turn.text ?? ''),
+        })),
+      ];
 
-      if (!resp.ok) {
-        const errJson = await resp.json().catch(() => ({}));
-        const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
-        logger.error({ status: resp.status, model: targetModel, errMsg }, 'groq request failed');
-        return { ok: false, reason: resp.status === 429 ? 'quota' : 'api', detail: `Groq error (${resp.status}): ${errMsg}` };
+      if (hasImages) {
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: questionText },
+            ...images.map((img) => ({
+              type: 'image_url',
+              image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+            })),
+          ],
+        });
+      } else {
+        messages.push({ role: 'user', content: questionText });
       }
 
-      const data = await resp.json();
-      const text = data.choices?.[0]?.message?.content?.trim() ?? '';
-      if (!text) return { ok: false, reason: 'empty' };
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages,
+            temperature: 0.7,
+            max_tokens: 800,
+          }),
+          signal: controller.signal,
+        });
 
-      const usageMeta = data.usage ?? {};
-      recordTokens({
-        promptTokens: usageMeta.prompt_tokens ?? 0,
-        outputTokens: usageMeta.completion_tokens ?? 0,
-        totalTokens: usageMeta.total_tokens ?? 0,
-      });
+        const status = resp.status;
+        if (!resp.ok) {
+          const errJson = await resp.json().catch(() => ({}));
+          const errMsg = errJson?.error?.message || `HTTP ${status}`;
+          logger.error({ status, model: modelName, errMsg }, 'groq request failed');
+          return { ok: false, status, errMsg };
+        }
 
-      return { ok: true, text };
-    } catch (err) {
-      const reason = err.name === 'AbortError' ? 'timeout' : 'network';
-      logger.error({ err: err.message, reason }, 'groq call errored');
-      return { ok: false, reason, detail: `Groq error: ${err.message}` };
-    } finally {
-      clearTimeout(timer);
+        const data = await resp.json();
+        const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+        if (!text) return { ok: false, status: 200, errMsg: 'empty', reason: 'empty' };
+
+        const usageMeta = data.usage ?? {};
+        recordTokens({
+          promptTokens: usageMeta.prompt_tokens ?? 0,
+          outputTokens: usageMeta.completion_tokens ?? 0,
+          totalTokens: usageMeta.total_tokens ?? 0,
+        });
+
+        return { ok: true, text };
+      } catch (err) {
+        const reason = err.name === 'AbortError' ? 'timeout' : 'network';
+        logger.error({ err: err.message, reason }, 'groq call errored');
+        return { ok: false, status: 0, errMsg: err.message, reason };
+      } finally {
+        clearTimeout(timer);
+      }
     }
+
+    let result = await sendGroqRequest(targetModel);
+
+    // If vision model fails with 404/400, dynamically find an available Groq vision model on this account
+    if (!result.ok && hasImages && (result.status === 404 || result.status === 400)) {
+      try {
+        const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { authorization: `Bearer ${apiKey}` },
+        });
+        if (modelsRes.ok) {
+          const modelsData = await modelsRes.json();
+          const availableIds = (modelsData.data || []).map((m) => m.id);
+          const candidate = availableIds.find(
+            (id) =>
+              id !== targetModel &&
+              (/llama-4-scout|llama-4-maverick|llama-3\.2-.*vision|vision|llava/i.test(id)),
+          );
+          if (candidate) {
+            logger.info({ oldModel: targetModel, visionModel: candidate }, 'retrying image request with discovered Groq vision model');
+            result = await sendGroqRequest(candidate);
+          }
+        }
+      } catch (lookupErr) {
+        logger.warn({ err: lookupErr.message }, 'could not query Groq models catalog for vision fallback');
+      }
+    }
+
+    if (!result.ok) {
+      const reason = result.reason || (result.status === 429 ? 'quota' : 'api');
+      return { ok: false, reason, detail: `Groq error (${result.status}): ${result.errMsg}` };
+    }
+
+    return { ok: true, text: result.text };
   }
 
-  async function callGemini(contents, apiKey, model) {
+  async function callGemini(contents, apiKey, model, images = []) {
     const generationConfig = {
-      temperature: 0.4,
-      maxOutputTokens: 700,
+      temperature: 0.7,
+      maxOutputTokens: 800,
     };
     if (model.includes('2.5')) {
       const budget = Number.parseInt(process.env.GEMINI_THINKING_BUDGET ?? '0', 10);
       generationConfig.thinkingConfig = { thinkingBudget: Number.isFinite(budget) ? budget : 0 };
+    }
+
+    if (Array.isArray(images) && images.length > 0 && contents.length > 0) {
+      const last = contents[contents.length - 1];
+      if (last.role === 'user' && Array.isArray(last.parts)) {
+        for (const img of images) {
+          last.parts.push({
+            inlineData: {
+              mimeType: img.mimeType || 'image/jpeg',
+              data: img.base64,
+            },
+          });
+        }
+      }
     }
 
     const controller = new AbortController();
@@ -277,7 +364,7 @@ export function createAssistant() {
     }
   }
 
-  async function ask({ chatJid, userKey, question, isAdmin = false }) {
+  async function ask({ chatJid, userKey, question, quotedText = '', images = [], isAdmin = false }) {
     const active = detectProviderAndKey();
     if (!active.apiKey) {
       return {
@@ -288,9 +375,22 @@ export function createAssistant() {
       };
     }
 
-    const trimmedQuestion = truncate(String(question ?? '').trim(), MAX_QUESTION_CHARS);
+    let trimmedQuestion = truncate(String(question ?? '').trim(), MAX_QUESTION_CHARS);
+    const hasImages = Array.isArray(images) && images.length > 0;
+    const hasQuoted = Boolean(quotedText && String(quotedText).trim());
+
+    if (!trimmedQuestion && !hasImages && !hasQuoted) {
+      return { ok: false, notice: 'Say hello, ask me a question, or send an image!' };
+    }
+
     if (!trimmedQuestion) {
-      return { ok: false, notice: 'Ask me a question and I will try to help.' };
+      if (hasImages && hasQuoted) {
+        trimmedQuestion = 'Please read the previous message and inspect the attached image to respond or help.';
+      } else if (hasImages) {
+        trimmedQuestion = 'Please inspect this image and explain what is in it or help out!';
+      } else {
+        trimmedQuestion = 'Please read and respond to this previous message.';
+      }
     }
 
     const cap = capExceeded();
@@ -316,6 +416,16 @@ export function createAssistant() {
       recordUserRequest(userKey);
     }
 
+    const promptLines = [groundingBlock(), ''];
+    if (hasQuoted) {
+      promptLines.push('[Replying to a previous message]:');
+      promptLines.push(`"${truncate(String(quotedText).trim(), 800)}"`);
+      promptLines.push('');
+    }
+    promptLines.push('Message from the group:');
+    promptLines.push(trimmedQuestion);
+    const fullPrompt = promptLines.join('\n');
+
     const contents = [
       ...history(chatJid).map((turn) => ({
         role: turn.role,
@@ -323,13 +433,23 @@ export function createAssistant() {
       })),
       {
         role: 'user',
-        parts: [{ text: `${groundingBlock()}\n\nQuestion from the group:\n${trimmedQuestion}` }],
+        parts: [{ text: fullPrompt }],
       },
     ];
 
-    const result = active.provider === 'groq'
-      ? await callGroq(`${groundingBlock()}\n\nQuestion from the group:\n${trimmedQuestion}`, history(chatJid), active.apiKey, active.model)
-      : await callGemini(contents, active.apiKey, active.model);
+    let result = active.provider === 'groq'
+      ? await callGroq(fullPrompt, history(chatJid), active.apiKey, active.model, images)
+      : await callGemini(contents, active.apiKey, active.model, images);
+
+    // Optional vision fallback: if Groq failed on an image and a Gemini AIza key is also configured, try Gemini
+    if (!result.ok && hasImages && active.provider === 'groq') {
+      const fallbackGeminiKey = String(process.env.GEMINI_API_KEY || '').trim();
+      if (fallbackGeminiKey.startsWith('AIza')) {
+        logger.info('falling back to Gemini for image analysis');
+        result = await callGemini(contents, fallbackGeminiKey, process.env.GEMINI_MODEL || 'gemini-1.5-flash', images);
+      }
+    }
+
     if (!result.ok) {
       if (isAdmin && result.detail) {
         return { ok: false, notice: `⚠️ ${result.detail}` };
@@ -343,12 +463,17 @@ export function createAssistant() {
       return { ok: false, notice: notices[result.reason] ?? 'Something went wrong answering that.' };
     }
 
-    remember(chatJid, 'user', trimmedQuestion);
+    const historyEntry =
+      (hasQuoted ? `[Replying to: "${truncate(String(quotedText).trim(), 120)}"] ` : '') +
+      (hasImages ? '[Image attached] ' : '') +
+      trimmedQuestion;
+
+    remember(chatJid, 'user', historyEntry);
     remember(chatJid, 'model', result.text);
 
     let text = truncate(result.text, config.gemini.maxReplyChars);
-    const course = referencedCourse(trimmedQuestion);
-    if (course || mentionsPastQuestions(trimmedQuestion)) {
+    const course = referencedCourse(`${quotedText} ${trimmedQuestion}`);
+    if (course || mentionsPastQuestions(`${quotedText} ${trimmedQuestion}`)) {
       const line = questionsDeyLine(course);
       if (!text.includes(config.questionsDeyUrl)) text = `${text}\n\n${line}`;
     }

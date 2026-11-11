@@ -20,9 +20,11 @@ import { timetableManager } from './timetable.js';
 import { botState, isMuted } from './store.js';
 import {
   contextInfoOf,
+  hasImageInMessage,
   isGroupJid,
   jidDigits,
   messageText,
+  quotedInfoOf,
   senderIdentifiers,
   senderJid,
 } from './util.js';
@@ -73,7 +75,9 @@ async function main() {
       if (isIgnoredChat(chatJid)) return;
 
       const text = messageText(msg);
-      if (!text) return;
+      const quoted = quotedInfoOf(msg);
+      const hasImage = hasImageInMessage(msg) || Boolean(quoted?.hasImage);
+      if (!text && !hasImage) return;
 
       const botNumbers = whatsapp.botNumbers();
       const identifiers = senderIdentifiers(msg);
@@ -87,12 +91,16 @@ async function main() {
 
         // /ask is routed through the same assistant path as an @mention.
         if (typeof result === 'object' && 'assistantQuestion' in result) {
+          const images = hasImage ? await whatsapp.extractImages(msg) : [];
           await answer({
             chatJid,
             msg,
             question: result.assistantQuestion,
+            quotedText: quoted?.text || '',
+            images,
             identifiers,
             muted,
+            isAdmin,
           });
           return;
         }
@@ -102,14 +110,17 @@ async function main() {
       }
 
       // --- Assistant triggers ---------------------------------------------
-      // Nothing else in a group gets a reply. No always-on listening.
-      const triggered = mentionsBot(msg, botNumbers) || repliesToBot(msg, botNumbers);
+      // In groups: only reply on @mention or reply to bot. In DMs: reply directly.
+      const triggered = !isGroupJid(chatJid) || mentionsBot(msg, botNumbers) || repliesToBot(msg, botNumbers);
       if (!triggered) return;
 
+      const images = hasImage ? await whatsapp.extractImages(msg) : [];
       await answer({
         chatJid,
         msg,
         question: stripMentions(text, botNumbers),
+        quotedText: quoted?.text || '',
+        images,
         identifiers,
         muted,
         isAdmin,
@@ -120,8 +131,17 @@ async function main() {
   const broadcaster = createBroadcaster({ whatsapp });
   const commands = createCommands({ whatsapp, broadcaster, assistant });
 
-  /** Shared assistant path for /ask, @mentions and replies. */
-  async function answer({ chatJid, msg, question, identifiers, muted, isAdmin = false }) {
+  /** Shared assistant path for /ask, @mentions, DMs, and replies. */
+  async function answer({
+    chatJid,
+    msg,
+    question,
+    quotedText = '',
+    images = [],
+    identifiers,
+    muted,
+    isAdmin = false,
+  }) {
     // Muted users get silence, not an explanation.
     if (muted) {
       logger.debug({ chatJid }, 'muted user triggered the assistant, ignoring');
@@ -131,7 +151,14 @@ async function main() {
     const userKey = identifiers[0] ?? senderJid(msg) ?? 'unknown';
     await whatsapp.showTyping(chatJid);
 
-    const result = await assistant.ask({ chatJid, userKey, question, isAdmin });
+    const result = await assistant.ask({
+      chatJid,
+      userKey,
+      question,
+      quotedText,
+      images,
+      isAdmin,
+    });
 
     if (result.ok) {
       await whatsapp.sendNow(chatJid, result.text, { quoted: msg });
