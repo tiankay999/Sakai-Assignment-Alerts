@@ -83,9 +83,18 @@ async function main() {
       const identifiers = senderIdentifiers(msg);
       const isAdmin = identifiers.some((d) => config.adminNumbers.includes(d));
       const muted = isMuted(identifiers);
+      const inGroup = isGroupJid(chatJid);
+      const dmNotice = `👋 Hey! I'm a group-based bot — I only respond and send class/assignment alerts inside our WhatsApp course group(s). Please tag me or use commands like ${config.commandPrefix}ask or ${config.commandPrefix}today there!`;
 
       // --- Commands -------------------------------------------------------
       if (text.startsWith(config.commandPrefix)) {
+        // In DMs, non-admins can only run /id; all other DM commands get the group-only notice.
+        const parsedCmd = commands.parse(text);
+        if (!inGroup && !isAdmin && parsedCmd?.name !== 'id') {
+          if (!muted) await whatsapp.sendNow(chatJid, dmNotice, { quoted: msg });
+          return;
+        }
+
         const result = await commands.handle({ msg, chatJid, text, isAdmin });
         if (result === null || result === undefined) return;
 
@@ -109,9 +118,15 @@ async function main() {
         return;
       }
 
-      // --- Assistant triggers ---------------------------------------------
-      // In groups: only reply on @mention or reply to bot. In DMs: reply directly.
-      const triggered = !isGroupJid(chatJid) || mentionsBot(msg, botNumbers) || repliesToBot(msg, botNumbers);
+      // --- Direct Messages (non-commands) ---------------------------------
+      if (!inGroup) {
+        if (!muted) await whatsapp.sendNow(chatJid, dmNotice, { quoted: msg });
+        return;
+      }
+
+      // --- Assistant triggers (group-only) --------------------------------
+      // In groups: only reply on @mention or reply to bot.
+      const triggered = mentionsBot(msg, botNumbers) || repliesToBot(msg, botNumbers);
       if (!triggered) return;
 
       const images = hasImage ? await whatsapp.extractImages(msg) : [];
