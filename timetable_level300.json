@@ -4,7 +4,7 @@
     "academicYear": "2026/2027",
     "semester": "First Semester",
     "updatedAt": "2026-10-30T07:58:28.235993",
-    "count": 18
+    "count": 34
   },
   "entries": [
     {
@@ -72,6 +72,108 @@
       }
     },
     {
+      "id": "ext-STAT-STAT335-SAY-MON-1130-STAT002",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "11:30",
+      "endTime": "12:30",
+      "durationHours": 1,
+      "courseCode": "STAT 335",
+      "courseTitle": "Sample Survey Methods",
+      "venue": "STAT002",
+      "lecturer": "Mr. Stephen A. Yeboah",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT335-SAY-MON-1130-STAT002",
+        "level": 300,
+        "day": "MON",
+        "start": "11:30",
+        "hours": 1,
+        "course": "STAT 335",
+        "title": "Sample Survey Methods",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "SAY",
+            "fullName": "Mr. Stephen A. Yeboah"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "SAY"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT335-BM-B-MON-1130-STAT202",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "11:30",
+      "endTime": "12:30",
+      "durationHours": 1,
+      "courseCode": "STAT 335",
+      "courseTitle": "Sample Survey Methods",
+      "venue": "STAT202",
+      "lecturer": "Dr. Benedict Mbeah-Baiden",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT335-BM-B-MON-1130-STAT202",
+        "level": 300,
+        "day": "MON",
+        "start": "11:30",
+        "hours": 1,
+        "course": "STAT 335",
+        "title": "Sample Survey Methods",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "BM-B",
+            "fullName": "Dr. Benedict Mbeah-Baiden"
+          }
+        ],
+        "venue": "STAT202",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "BM-B"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT333-IS-MON-1230-STAT002",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "12:30",
+      "endTime": "13:30",
+      "durationHours": 1,
+      "courseCode": "STAT 333",
+      "courseTitle": "Statistical Inference I",
+      "venue": "STAT002",
+      "lecturer": "Dr. Issah Seidu",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT333-IS-MON-1230-STAT002",
+        "level": 300,
+        "day": "MON",
+        "start": "12:30",
+        "hours": 1,
+        "course": "STAT 333",
+        "title": "Statistical Inference I",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "IS",
+            "fullName": "Dr. Issah Seidu"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "IS"
+      }
+    },
+    {
       "id": "seed-009",
       "day": "MON",
       "dayIndex": 1,
@@ -101,6 +203,40 @@
         "venue": "LOT1",
         "note": "",
         "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT333-EO-MON-1530-STAT002",
+      "day": "MON",
+      "dayIndex": 1,
+      "startTime": "15:30",
+      "endTime": "16:30",
+      "durationHours": 1,
+      "courseCode": "STAT 333",
+      "courseTitle": "Statistical Inference I",
+      "venue": "STAT002",
+      "lecturer": "Dr. Eric Ocran",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT333-EO-MON-1530-STAT002",
+        "level": 300,
+        "day": "MON",
+        "start": "15:30",
+        "hours": 1,
+        "course": "STAT 333",
+        "title": "Statistical Inference I",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "EO",
+            "fullName": "Dr. Eric Ocran"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "EO"
       }
     },
     {
@@ -234,6 +370,74 @@
       }
     },
     {
+      "id": "ext-STAT-STAT339-EA-TUE-1730-STAT202",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "17:30",
+      "endTime": "19:30",
+      "durationHours": 2,
+      "courseCode": "STAT 339",
+      "courseTitle": "Methods of Linear Algebra",
+      "venue": "STAT202",
+      "lecturer": "Dr. Edward Acheampong",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT339-EA-TUE-1730-STAT202",
+        "level": 300,
+        "day": "TUE",
+        "start": "17:30",
+        "hours": 2,
+        "course": "STAT 339",
+        "title": "Methods of Linear Algebra",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "EA",
+            "fullName": "Dr. Edward Acheampong"
+          }
+        ],
+        "venue": "STAT202",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "EA"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT339-ES-Y-TUE-1730-JQB09",
+      "day": "TUE",
+      "dayIndex": 2,
+      "startTime": "17:30",
+      "endTime": "19:30",
+      "durationHours": 2,
+      "courseCode": "STAT 339",
+      "courseTitle": "Methods of Linear Algebra",
+      "venue": "JQB09",
+      "lecturer": "Dr. Enoch Sakyi-Yeboah",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT339-ES-Y-TUE-1730-JQB09",
+        "level": 300,
+        "day": "TUE",
+        "start": "17:30",
+        "hours": 2,
+        "course": "STAT 339",
+        "title": "Methods of Linear Algebra",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "ES-Y",
+            "fullName": "Dr. Enoch Sakyi-Yeboah"
+          }
+        ],
+        "venue": "JQB09",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "ES-Y"
+      }
+    },
+    {
       "id": "seed-030-1830",
       "day": "TUE",
       "dayIndex": 2,
@@ -330,6 +534,74 @@
       }
     },
     {
+      "id": "ext-STAT-STAT333-IS-WED-1330-STAT002",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "13:30",
+      "endTime": "15:30",
+      "durationHours": 2,
+      "courseCode": "STAT 333",
+      "courseTitle": "Statistical Inference I",
+      "venue": "STAT002",
+      "lecturer": "Dr. Issah Seidu",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT333-IS-WED-1330-STAT002",
+        "level": 300,
+        "day": "WED",
+        "start": "13:30",
+        "hours": 2,
+        "course": "STAT 333",
+        "title": "Statistical Inference I",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "IS",
+            "fullName": "Dr. Issah Seidu"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "IS"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT333-EO-WED-1330-STAT202",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "13:30",
+      "endTime": "15:30",
+      "durationHours": 2,
+      "courseCode": "STAT 333",
+      "courseTitle": "Statistical Inference I",
+      "venue": "STAT202",
+      "lecturer": "Dr. Eric Ocran",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT333-EO-WED-1330-STAT202",
+        "level": 300,
+        "day": "WED",
+        "start": "13:30",
+        "hours": 2,
+        "course": "STAT 333",
+        "title": "Statistical Inference I",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "EO",
+            "fullName": "Dr. Eric Ocran"
+          }
+        ],
+        "venue": "STAT202",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "EO"
+      }
+    },
+    {
       "id": "seed-019",
       "day": "WED",
       "dayIndex": 3,
@@ -394,6 +666,74 @@
       }
     },
     {
+      "id": "ext-STAT-STAT335-SAY-WED-1530-STAT002",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "15:30",
+      "endTime": "17:30",
+      "durationHours": 2,
+      "courseCode": "STAT 335",
+      "courseTitle": "Sample Survey Methods",
+      "venue": "STAT002",
+      "lecturer": "Mr. Stephen A. Yeboah",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT335-SAY-WED-1530-STAT002",
+        "level": 300,
+        "day": "WED",
+        "start": "15:30",
+        "hours": 2,
+        "course": "STAT 335",
+        "title": "Sample Survey Methods",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "SAY",
+            "fullName": "Mr. Stephen A. Yeboah"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "SAY"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT335-BM-B-WED-1530-STAT202",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "15:30",
+      "endTime": "17:30",
+      "durationHours": 2,
+      "courseCode": "STAT 335",
+      "courseTitle": "Sample Survey Methods",
+      "venue": "STAT202",
+      "lecturer": "Dr. Benedict Mbeah-Baiden",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT335-BM-B-WED-1530-STAT202",
+        "level": 300,
+        "day": "WED",
+        "start": "15:30",
+        "hours": 2,
+        "course": "STAT 335",
+        "title": "Sample Survey Methods",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "BM-B",
+            "fullName": "Dr. Benedict Mbeah-Baiden"
+          }
+        ],
+        "venue": "STAT202",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "BM-B"
+      }
+    },
+    {
       "id": "seed-021",
       "day": "WED",
       "dayIndex": 3,
@@ -423,6 +763,74 @@
         "venue": "JQB24",
         "note": "",
         "source": "dept-2025-sem1"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT331-GK-D-WED-1730-STAT002",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "17:30",
+      "endTime": "18:30",
+      "durationHours": 1,
+      "courseCode": "STAT 331",
+      "courseTitle": "Probability Distributions",
+      "venue": "STAT002",
+      "lecturer": "Dr. Gabriel Kallah-Dagadu",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT331-GK-D-WED-1730-STAT002",
+        "level": 300,
+        "day": "WED",
+        "start": "17:30",
+        "hours": 1,
+        "course": "STAT 331",
+        "title": "Probability Distributions",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "GK-D",
+            "fullName": "Dr. Gabriel Kallah-Dagadu"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "GK-D"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT331-EA-WED-1830-STAT202",
+      "day": "WED",
+      "dayIndex": 3,
+      "startTime": "18:30",
+      "endTime": "19:30",
+      "durationHours": 1,
+      "courseCode": "STAT 331",
+      "courseTitle": "Probability Distributions",
+      "venue": "STAT202",
+      "lecturer": "Dr. Edward Acheampong",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT331-EA-WED-1830-STAT202",
+        "level": 300,
+        "day": "WED",
+        "start": "18:30",
+        "hours": 1,
+        "course": "STAT 331",
+        "title": "Probability Distributions",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "EA",
+            "fullName": "Dr. Edward Acheampong"
+          }
+        ],
+        "venue": "STAT202",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "EA"
       }
     },
     {
@@ -553,6 +961,74 @@
       }
     },
     {
+      "id": "ext-STAT-STAT331-GK-D-FRI-0930-STAT002",
+      "day": "FRI",
+      "dayIndex": 5,
+      "startTime": "09:30",
+      "endTime": "11:30",
+      "durationHours": 2,
+      "courseCode": "STAT 331",
+      "courseTitle": "Probability Distributions",
+      "venue": "STAT002",
+      "lecturer": "Dr. Gabriel Kallah-Dagadu",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT331-GK-D-FRI-0930-STAT002",
+        "level": 300,
+        "day": "FRI",
+        "start": "09:30",
+        "hours": 2,
+        "course": "STAT 331",
+        "title": "Probability Distributions",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "GK-D",
+            "fullName": "Dr. Gabriel Kallah-Dagadu"
+          }
+        ],
+        "venue": "STAT002",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "GK-D"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT331-EA-FRI-0930-STAT202",
+      "day": "FRI",
+      "dayIndex": 5,
+      "startTime": "09:30",
+      "endTime": "11:30",
+      "durationHours": 2,
+      "courseCode": "STAT 331",
+      "courseTitle": "Probability Distributions",
+      "venue": "STAT202",
+      "lecturer": "Dr. Edward Acheampong",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT331-EA-FRI-0930-STAT202",
+        "level": 300,
+        "day": "FRI",
+        "start": "09:30",
+        "hours": 2,
+        "course": "STAT 331",
+        "title": "Probability Distributions",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "EA",
+            "fullName": "Dr. Edward Acheampong"
+          }
+        ],
+        "venue": "STAT202",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "EA"
+      }
+    },
+    {
       "id": "e-mvkr0poj-9qibt",
       "day": "FRI",
       "dayIndex": 5,
@@ -581,6 +1057,74 @@
         ],
         "venue": "MATH05",
         "note": ""
+      }
+    },
+    {
+      "id": "ext-STAT-STAT339-EA-FRI-1730-JQB14",
+      "day": "FRI",
+      "dayIndex": 5,
+      "startTime": "17:30",
+      "endTime": "18:30",
+      "durationHours": 1,
+      "courseCode": "STAT 339",
+      "courseTitle": "Methods of Linear Algebra",
+      "venue": "JQB14",
+      "lecturer": "Dr. Edward Acheampong",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT339-EA-FRI-1730-JQB14",
+        "level": 300,
+        "day": "FRI",
+        "start": "17:30",
+        "hours": 1,
+        "course": "STAT 339",
+        "title": "Methods of Linear Algebra",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "EA",
+            "fullName": "Dr. Edward Acheampong"
+          }
+        ],
+        "venue": "JQB14",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "EA"
+      }
+    },
+    {
+      "id": "ext-STAT-STAT339-ES-Y-FRI-1830-JQB14",
+      "day": "FRI",
+      "dayIndex": 5,
+      "startTime": "18:30",
+      "endTime": "19:30",
+      "durationHours": 1,
+      "courseCode": "STAT 339",
+      "courseTitle": "Methods of Linear Algebra",
+      "venue": "JQB14",
+      "lecturer": "Dr. Enoch Sakyi-Yeboah",
+      "status": "Core (CS & Stat)",
+      "raw": {
+        "id": "ext-STAT-STAT339-ES-Y-FRI-1830-JQB14",
+        "level": 300,
+        "day": "FRI",
+        "start": "18:30",
+        "hours": 1,
+        "course": "STAT 339",
+        "title": "Methods of Linear Algebra",
+        "kind": "",
+        "lecturers": [
+          {
+            "initials": "ES-Y",
+            "fullName": "Dr. Enoch Sakyi-Yeboah"
+          }
+        ],
+        "venue": "JQB14",
+        "note": "",
+        "source": "external:2026-10-25b",
+        "external": "STAT",
+        "group": "ES-Y"
       }
     }
   ]

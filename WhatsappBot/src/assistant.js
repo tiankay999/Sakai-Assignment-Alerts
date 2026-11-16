@@ -96,12 +96,12 @@ function groundingBlock() {
   try {
     const todayClasses = timetableManager.getClassesForToday();
     if (todayClasses.length) {
-      lines.push('', "TODAY'S DCIT LEVEL 300 CLASSES:");
+      lines.push('', "TODAY'S LEVEL 300 CLASSES (DCIT & STAT):");
       for (const c of todayClasses) {
         lines.push(`- ${c.startTime}-${c.endTime} | ${c.courseCode} (${c.courseTitle}) | ${c.venue} | ${c.lecturer}`);
       }
     } else {
-      lines.push('', "TODAY'S DCIT LEVEL 300 CLASSES: No classes scheduled today.");
+      lines.push('', "TODAY'S LEVEL 300 CLASSES: No classes scheduled today.");
     }
   } catch {
     // ignore if timetable not loaded yet

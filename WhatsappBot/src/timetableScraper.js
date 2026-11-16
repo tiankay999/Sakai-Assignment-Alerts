@@ -49,9 +49,9 @@ export async function fetchLevel300Timetable() {
     const code = String(e.course || '').trim();
     if (!code) continue;
 
-    // Only keep DCIT courses for Level 300
-    const isDCITL300 = /^DCIT\s*3\d{2}/i.test(code) || (e.level === 300 && /^DCIT/i.test(code));
-    if (!isDCITL300) continue;
+    // Keep DCIT and STAT courses for Level 300
+    const isL300 = /^(DCIT|STAT)\s*3\d{2}/i.test(code) || (e.level === 300 && /^(DCIT|STAT)/i.test(code));
+    if (!isL300) continue;
 
     const lecturers = (e.lecturers || [])
       .map(l => l.fullName ? l.fullName.trim() : (l.initials ? l.initials.trim() : ''))
